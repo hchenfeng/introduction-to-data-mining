@@ -1,0 +1,140 @@
+---
+title: "hw01"
+author: "Chenfeng Hao"
+date: "9/9/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part 1 
+
+1. attrs: age, gender, lineage, title 
+
+   class: characters who will get killed and those who will not
+
+   Training set would be a subset of all characters in GOT used for fitting and and building the classification model.
+
+2. attrs: programming experience, work experience, stats background, birth place, education background 
+   
+   proximity measures:\
+     * programming experience -- years\
+     * work experience -- years & job field/type\
+     * stats background -- number of stats classes taken, levels of stats classes taken\
+     * birth place -- country/state\
+     * education background -- degree obtained/degree major\
+
+# Part 2: paste in the command or results (as indicated) 
+
+## 2. vectors 
+
+a) create a vector named iq of 100 elements of N(100,20) (normal with a mean of 100 and std dev of 20) data.
+
+```{r results='hide'}
+iq <- rnorm(100, mean = 100, sd = 20)
+```
+
+b) add 10 to every element of iq
+
+```{r results='hide'}
+iq + 10
+```
+
+c) calculate the mean and std dev of iq
+
+```{r}
+mean(iq)
+sd(iq)
+```
+
+d) display the first 10 elements of iq using an index (e.g. iq[1:10])
+
+```{r results='hide'}
+iq[1:10]
+```
+
+e) display the elements 11 through 20 of iq using an index
+
+```{r results='hide'}
+iq[11:20]
+```
+
+## 3. tables
+
+a) create a matrix called tmp with the following values:
+
+```{r}
+matdata <- c(3, 7,-1, 6, 10, 0)
+tmp <- matrix(matdata,
+              nrow = 2,
+              ncol = 3,
+              byrow = TRUE)
+```
+
+b) read the file hw01data.txt in R and assign it to the variable x
+
+```{r}
+x <- read.table("data.txt", header = TRUE)
+```
+
+c) calculate the mean of column 3 
+
+```{r}
+mean(x[, 3])
+```
+
+d) sum up the values in column 2, rows 5 through 15 
+
+```{r results='hide'}
+sum(x[5:15, 2])
+```
+
+e) calculate the average rate of all states where the average income is > 90000, example below  
+• idx=x[,3]>90000  
+• mean(x[idx,2]) 
+
+```{r}
+ind <- x[, 3] > 90000
+mean(x[ind, 2])
+```
+
+f) calculate the average avgInc for all states where the fico is < 700  
+• using the method above (using idx)  
+• using a for loop and if statement
+
+```{r}
+idx <- x[, 4] < 700
+mean(x[idx, 3])
+
+fmean <- 0
+fcounter <- 0
+ftotal <- 0
+for (i in 1:nrow(x)) {
+  if (x[i, 4] < 700) {
+    ftotal <- ftotal + x[i, 3]
+    fcounter <- fcounter + 1
+  }
+}
+fmean <- ftotal / fcounter
+fmean
+```
+
+
+4. functions  
+a) write a function that takes a table and returns an vector that contains the mean values of columns 2, 3 and 4
+
+```{r}
+meanValuesOfColumns = function(tableName) {
+  tableData <- read.table(tableName, header = TRUE)
+  mean2 <- mean(tableData[, 2])
+  mean3 <- mean(tableData[, 3])
+  mean4 <- mean(tableData[, 4])
+  meanValuesOfColumns <- c(mean2, mean3, mean4)
+  return (meanValuesOfColumns)
+}
+```
+
