@@ -1,0 +1,201 @@
+---
+title: "hw03"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, tidy = T)
+library(dplyr)
+library(data.table)
+```
+
+```{r}
+hw03data <- read.table("hw03data.txt", header = TRUE)
+
+# data pulled from shown table
+hw03example <- read.table("hw03_example_data.txt", header = TRUE)
+```
+
+Part A – data characteristics
+
+1. assume that the heart rate for patient 103 is not valid (just for this question).  What would be the replacement value using 
+
+a) global average 
+\
+```{r}
+mean(hw03example$pulse)
+```
+
+b) average for ageGroup 
+\
+```{r}
+# average by age group
+hw03example %>% 
+  group_by(ageGroup) %>% 
+  summarise(mean(pulse), sd(pulse))
+```
+
+
+**Age group would be a better replacement value, because the variations among the groups seem relatively big.**
+
+
+
+2. if we use 3 std dev as a way to identify outliers, list any outliers for heart rate
+
+**If we are using 3 std to identify outliers, there is not any in the table. However, the boxplot shows an outlier, because it is using +/- 1.58 * IQR as the standard.**
+\
+```{r}
+boxplot(hw03example$pulse)
+```
+
+3. to reduce the dimensionality, suggest one or two columns to remove based on correlation or lack of generalization.
+
+**We could remove the id column, since it is not featured in any relevant analysis.**
+
+Part B – exploratory analysis
+
+1. using summary statistics, answer the following questions 
+\
+```{r}
+summary(hw03data)
+```
+
+a) how many instances are in the data set? 
+
+**Number of instances: 5000.**
+
+b) what is your estimate of the probability of having the virus? 
+\
+```{r}
+# for young adults
+young_adult <- hw03data %>% filter(ageGroup == 1)
+young_adult %>%
+  filter(virus == "Y") %>%
+  summarise(positive_rate = nrow(.) / nrow(young_adult))
+
+# for the whole population
+hw03data %>%
+  filter(virus == "Y") %>%
+  summarise(positive_rate = nrow(.) / nrow(hw03data))
+```
+
+**The question could be asking for the positive rate of either young adults or the general population (that is, including all age groups). For young adults, the positive rate is about 50.83%; for all age groups, the rate is 51.16%.**
+
+c) what is the probability of having a heart rate between 56 and 75? 
+\
+```{r}
+hw03data %>%
+  filter(pulse == (56:75)) %>%
+  summarise(heart_rate_56_to_75 = nrow(.) / nrow(hw03data))
+```
+
+**The probability of having a heart rate between 56 and 75 is 2.94%.** 
+
+2. histograms 
+
+a) show histograms of both heart rate and temperature 
+\
+```{r}
+hist(hw03data$pulse, main = "Heart Rate")
+
+hist(hw03data$temp, main = "Temperature")
+```
+
+b) do they appear to be distributed according to the gaussian distribution? 
+\
+```{r}
+hist(hw03data$pulse, freq = F, main = "Heart Rate")
+x <- seq(30, 100, length.out = 100)
+y <- with(hw03data, dnorm(x, mean(pulse), sd(pulse)))
+lines(x, y, col = "red")
+
+hist(hw03data$temp, freq = F, main = "Temperature")
+x <- seq(90, 105, length.out = 100)
+y <- with(hw03data, dnorm(x, mean(temp), sd(temp)))
+lines(x, y, col = "red")
+```
+
+**Both histograms are approximately normal, or following a Gaussian distribution.**
+
+3. boxplots: 
+
+a) show boxplots of heart rate 
+\
+```{r}
+boxplot(hw03data$pulse, main="Boxplot of heart rate")
+```
+
+b) show boxplots of heart rate for just those with the virus 
+\
+```{r}
+with_virus <- hw03data %>% filter(virus == "Y")
+boxplot(with_virus$pulse, main="Boxplot of those with the virus")
+```
+
+c) show boxplots of heart rate for those with the virus and those without the virus, side-by-side 
+\
+```{r}
+without_virus <- hw03data %>% filter(virus == "N")
+boxplot(with_virus$pulse, without_virus$pulse, main="Comparison of Heart Rate", names = c("with virus", "without virus"))
+```
+
+d) show boxplots of temperature for those with the virus and those without the virus, side-by-side 
+\
+```{r}
+boxplot(with_virus$temp, without_virus$temp, main="Comparison of Temperature", names = c("with virus", "without virus"))
+```
+
+e) looking at the boxplots, which attribute (heart rate or temperature) appears to be best at predicting whether a person has a virus? 
+
+**Heart rate, because there seems to be more significant difference between the heart rates of people with the virus and those without.**
+
+4. scatter plots 
+
+a) show a scatter plot with heart rate vs temperature with dots for the instances.  Give those with the virus a different color than those without the virus. 
+\
+```{r}
+plot(hw03data$pulse, hw03data$temp, col = (hw03data$virus == "Y") + 1)
+legend(
+  "topleft",
+  legend = c("without virus", "with virus"),
+  bty = "n",
+  pch = 1,
+  col = c(1:2),
+  cex = 1
+)
+```
+
+b) does it appear that we could separate the majority of the instances by class?
+
+**Yes, it is possible to separate the majority of people with the virus from those without.**
+
+5. tables 
+
+a) use the table function to create a table of gender by virus 
+\
+```{r}
+gender_by_virus <- table(hw03data$gender, hw03data$virus)
+gender_by_virus
+```
+
+b) use the table function to create a table of ageGroup by virus 
+\
+```{r}
+ageGroup_by_virus <- table(hw03data$ageGroup, hw03data$virus)
+ageGroup_by_virus
+```
+
+c) does it appear that gender or ageGroup are predictive of virus?
+\
+```{r}
+# simple Chi-squared test
+chisq.test(gender_by_virus, correct = F)
+chisq.test(ageGroup_by_virus, correct = F)
+```
+
+**Gender appears to be predicative of the virus (p-value = 5.353e-12). Age group does not seem to be predicative of the virus (p-value = 0.4617).**
+
