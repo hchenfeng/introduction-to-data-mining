@@ -1,0 +1,104 @@
+---
+title: "HW05"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), tz = 'ES', '%b %d, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = F,
+  message = F,
+  tidy = T
+)
+library(e1071)
+```
+
+Part 1 – manual calculations  
+
+1. calculate the prior probabilities for the class values 
+
+**Answer:**
+4 / 10 = 0.4
+
+2. calculate the likelihoods for 
+
+a) gender 
+
+**Answer:**
+F: 1 / 4 = 0.25, M: 3 / 4 = 0.75
+
+b) ageGroup 
+
+**Answer:**
+1: 0 / 4 = 0, 2: 1 / 4 = 0.25, 3: 3 / 4 = 0.75
+
+3. calculate the likelihoods (mean and std dev.) for 
+
+a) pulse  
+
+**Answer:**
+mean = 66.25, std $\approx$ 6.40
+
+b) test 
+
+**Answer:**
+mean = 74.75, std $\approx$ 9.71
+
+Part 2 – classifying instances  
+
+Using just the model, do the following:  
+
+1.State whether a patient is more or less likely to have the virus without knowing anything about the patient. 
+**Answer:**
+2. State whether a patient who has the virus is more likely to be male or female. 
+**Answer:**
+3. Calculate the numbers (numerator of posterior) to categorize the following instances (for pulse and test, use the R function dnorm to calculate the probability) : 
+**Answer:**
+a) {2031, f, 2, 66, 50 ,?}  
+**Answer:**
+b) {2032, m, 1, 90 ,81 ,?}  
+**Answer:**
+c) {2034, m, 3, 90 ,55 ,?}  
+**Answer:**
+4. Exercise can often lower someone’s pulse rate. What advise would you give a friend to help them to avoid getting the virus?  
+**Answer:**
+
+Part 3 – building a model in R 
+
+1. Perform the following actions 
+
+a) read the data from the file into a data matrix 
+\
+```{r}
+hw05data <- read.table("hw04dataSenate.txt", header = T)
+```
+
+b) make gender, ageGroup and virus factors 
+\
+```{r}
+for (i in c(3, 5:12, 14)) {
+  hw05data[, i] <- as.factor(hw05data[, i])
+}
+```
+
+c) use naive Bayes to build a model using virus as the class and all of the attributes (except id) 
+\
+```{r}
+mod <- naiveBayes(approval ~ ., hw05data)
+```
+
+d) display the model (e.g. the priors and likelihoods) 
+\
+```{r}
+mod
+```
+
+e) identify the one (if only one) or two most predictive attributes 
+
+2. Answer the following general questions  
+
+a) what kind of probability distribution does naive Bayes assume? 
+
+b) would it work for other distributions (observe the ones below for examples)?
