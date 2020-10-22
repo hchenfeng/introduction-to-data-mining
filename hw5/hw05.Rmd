@@ -1,7 +1,7 @@
 ---
 title: "HW05"
 author: "Chenfeng Hao"
-date: "`r format(Sys.time(), tz = 'ES', '%b %d, %Y')`"
+date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
 output: pdf_document
 ---
 
@@ -12,6 +12,7 @@ knitr::opts_chunk$set(
   message = F,
   tidy = T
 )
+options(scipen = 999)
 library(e1071)
 ```
 
@@ -20,50 +21,80 @@ Part 1 – manual calculations
 1. calculate the prior probabilities for the class values 
 
 **Answer:**
-4 / 10 = 0.4
+Y: 4 / 10 = 0.4, N: 6 / 10 = 0.6
 
 2. calculate the likelihoods for 
 
 a) gender 
 
 **Answer:**
-F: 1 / 4 = 0.25, M: 3 / 4 = 0.75
+F|V: 1 / 4 = 0.25, M|V: 3 / 4 = 0.75, F|N: 4 / 6 $\approx$ 0.67, M|N: 2 / 6 $\approx$ 0.33
 
 b) ageGroup 
 
 **Answer:**
-1: 0 / 4 = 0, 2: 1 / 4 = 0.25, 3: 3 / 4 = 0.75
+1|V: 0 / 4 = 0, 2|V: 1 / 4 = 0.25, 3|V: 3 / 4 = 0.75, 1|N: 3 / 6 = 0.5, 2|N: 3 / 6 = 0.5, 3|N: 0 / 6 = 0
 
 3. calculate the likelihoods (mean and std dev.) for 
 
 a) pulse  
 
 **Answer:**
-mean = 66.25, std $\approx$ 6.40
+Y: mean = 60.25, std $\approx$ 6.40, N: mean $\approx$ 75.67, std $\approx$ 17.29
 
 b) test 
 
 **Answer:**
-mean = 74.75, std $\approx$ 9.71
+Y: mean = 74.75, std $\approx$ 9.71, N: mean $\approx$ 66.17, std $\approx$ 5.91
 
 Part 2 – classifying instances  
 
 Using just the model, do the following:  
 
 1.State whether a patient is more or less likely to have the virus without knowing anything about the patient. 
+
 **Answer:**
+Given that the prior probability of having the virus is 0.35, a patient is less likely to have the virus. 
+
 2. State whether a patient who has the virus is more likely to be male or female. 
+
 **Answer:**
-3. Calculate the numbers (numerator of posterior) to categorize the following instances (for pulse and test, use the R function dnorm to calculate the probability) : 
-**Answer:**
+A patient who has the virus is more likely to be male than female, P(m|v) = 0.52 vs P(f|v) = 0.48.  
+
+3. Calculate the numbers (numerator of posterior) to categorize the following instances (for pulse and test, use the R function dnorm to calculate the probability): 
+
 a) {2031, f, 2, 66, 50 ,?}  
-**Answer:**
+
+**Answer:**  
+P(v) * P(f|v) * P(2|v) * P(66|v) * P(50|v) = 0.35 * 0.48 * 0.25 * `r signif(dnorm(66, 74, 8), 2)` * `r signif(dnorm(50, 71, 8), 2)` $\approx$ `r signif(0.35 * 0.48 * 0.25 * 0.03 * 0.0016, 2)`  
+
+P(-v) * P(f|-v) * P(2|-v) * P(66|-v) * P(50|-v) = 0.65 * 0.55 * 0.70 * `r signif(dnorm(66, 64, 8), 2)` * `r signif(dnorm(50, 58, 10), 2)` $\approx$ `r signif(0.65 * 0.55 * 0.70 * 0.048 * 0.029, 2)`  
+
+0.000002 - 0.00035 = `r 0.000002 - 0.00035`, so 'n'. 
+
+
 b) {2032, m, 1, 90 ,81 ,?}  
-**Answer:**
+
+**Answer:**  
+P(v) * P(m|v) * P(1|v) * P(90|v) * P(81|v) = 0.35 * 0.52 * 0.20 * `r signif(dnorm(90, 74, 8), 2)` * `r signif(dnorm(81, 71, 8), 2)` $\approx$ `r signif(0.35 * 0.52 * 0.20 * 0.0067 * 0.023, 2)`  
+
+P(-v) * P(m|-v) * P(1|-v) * P(90|-v) * P(81|-v) = 0.65 * 0.45 * 0.15 * `r signif(dnorm(90, 64, 8), 2)` * `r signif(dnorm(81, 58, 10), 2)` $\approx$ `r signif(65 * 0.45 * 0.15 * 0.00025 * 0.0028, 2)`  
+
+0.0000056 - 0.0000031 = `r 0.0000056 - 0.0000031`, so 'y'.  
+
 c) {2034, m, 3, 90 ,55 ,?}  
-**Answer:**
+
+**Answer:**  
+P(v) * P(m|v) * P(3|v) * P(90|v) * P(55|v) = 0.35 * 0.52 * 0.45 * `r signif(dnorm(90, 74, 8), 2)` * `r signif(dnorm(55, 71, 8), 2)` $\approx$ `r signif(0.35 * 0.52 * 0.45 * 0.0067 * 0.0067, 2)` 
+
+P(-v) * P(m|-v) * P(3|-v) * P(90|-v) * P(55|-v) = 0.65 * 0.45 * 0.15 * `r signif(dnorm(90, 64, 8), 2)` * `r signif(dnorm(55, 58, 10), 2)` $\approx$ `r signif(65 * 0.45 * 0.15 * 0.00025 * 0.038, 2)` 
+
+0.0000037 - 0.000042 = `r 0.0000037 - 0.0000424`, so 'n'. 
+
 4. Exercise can often lower someone’s pulse rate. What advise would you give a friend to help them to avoid getting the virus?  
+
 **Answer:**
+Since the mean pulse rate of getting the virus (74) is higher than the mean pulse rate of not getting the virus (64), I would suggest the friend to take appropriate amounts of exercise to lower their pulse rate. 
 
 Part 3 – building a model in R 
 
@@ -75,7 +106,7 @@ a) read the data from the file into a data matrix
 hw05data <- read.table("hw04dataSenate.txt", header = T)
 ```
 
-b) make gender, ageGroup and virus factors 
+b) make pol, law, mil, soc, edu, med, bus, agr, fin and approval, factors  
 \
 ```{r}
 for (i in c(3, 5:12, 14)) {
@@ -86,6 +117,7 @@ for (i in c(3, 5:12, 14)) {
 c) use naive Bayes to build a model using virus as the class and all of the attributes (except id) 
 \
 ```{r}
+hw05data <- hw05data[,3:ncol(hw05data)]
 mod <- naiveBayes(approval ~ ., hw05data)
 ```
 
@@ -97,8 +129,112 @@ mod
 
 e) identify the one (if only one) or two most predictive attributes 
 
+ 
+**Answer:**  
+
+```{r}
+abs(mod$tables$law[1,2] - mod$tables$law[2,2]) 
+
+abs(mod$tables$mil[1,2] - mod$tables$mil[2,2]) 
+
+abs(mod$tables$soc[1,2] - mod$tables$soc[2,2]) 
+
+abs(mod$tables$edu[1,2] - mod$tables$edu[2,2]) 
+
+abs(mod$tables$med[1,2] - mod$tables$med[2,2]) 
+
+abs(mod$tables$bus[1,2] - mod$tables$bus[2,2]) 
+
+abs(mod$tables$agr[1,2] - mod$tables$agr[2,2]) 
+
+abs(mod$tables$fin[1,2] - mod$tables$fin[2,2]) 
+```
+
+P(y|D) = 0.49152542 * 0.59 / 0.45 = `r  0.49152542 * 0.59 / 0.45` 
+
+P(y|I) = 1/(100 + 3) * 0.59 / 0.02 = `r 1/(100 + 3) * 0.59 / 0.02`
+
+P(y|R) = 0.47457627 * 0.41 / 0.53 = `r 0.47457627 * 0.41 / 0.53`
+
+P(y|law) = 0.4745763 * 0.59 / 0.47 = `r 0.4745763 * 0.59 / 0.47`
+
+P(y|-law) = 0.5254237 * 0.59 / 0.53 = `r 0.5254237 * 0.59 / 0.53`
+
+P(y|mil) = 0.1525424 * 0.59 / 0.15 = `r 0.1525424 * 0.59 / 0.15`
+
+P(y|-mil) = 0.8474576 * 0.59 / 0.85 = `r 0.8474576 * 0.59 / 0.85`
+
+P(y|soc) = 0.1525424 * 0.59 / 0.17 = `r 0.1525424 * 0.59 / 0.17`
+
+P(y|-soc) = 0.8474576 * 0.59 / 0.83 = `r 0.8474576 * 0.59 / 0.83`
+
+P(y|edu) = 0.1864407 * 0.59 / 0.19 = `r 0.1864407 * 0.59 / 0.19`
+
+P(y|-edu) = 0.8135593 * 0.59 / 0.81 = `r 0.8135593 * 0.59 / 0.81`
+
+P(y|-med) = 0.94915254 * 0.59 / 0.95 = `r 0.94915254 * 0.59 / 0.95` 
+
+P(y|med) = 0.05084746 * 0.59 / 0.05 = `r 0.05084746 * 0.59 / 0.05`
+
+P(y|bus) = 0.2203390 * 0.59 / 0.24 = `r 0.2203390 * 0.59 / 0.24` 
+
+P(y|-bus) = 0.7796610 * 0.59 / 0.76 = `r 0.7796610 * 0.59 / 0.76`
+
+P(y|agr) = 0.03389831 * 0.59 / 0.04 = `r 0.03389831 * 0.59 / 0.04`
+
+P(y|-agr) = 0.96610169 * 0.59 / 0.96 = `r 0.96610169 * 0.59 / 0.96`  
+
+P(y|fin) = 0.05084746 * 0.59 / 0.07 = `r 0.05084746 * 0.59 / 0.07`
+
+P(y|-fin) = 0.94915254 * 0.59 / 0.93 = `r 0.94915254 * 0.59 / 0.93`
+
+
+P(y|D) is the highest (0.6444444), next is P(y|-bus) (0.6052631), then P(y|-soc), then P(y|-fin). 
+
+Or, if the question is asking for something like confusion tables, then fin seems to make more correct predictions than others.
+ 
+\
+```{r}
+mod_pol <- naiveBayes(approval ~ pol, hw05data)
+table(predict(mod_pol, hw05data), hw05data$approval)
+
+mod_law <- naiveBayes(approval ~ law, hw05data)
+table(predict(mod_law, hw05data), hw05data$approval)
+
+mod_mil <- naiveBayes(approval ~ mil, hw05data)
+table(predict(mod_mil, hw05data), hw05data$approval)
+
+mod_soc <- naiveBayes(approval ~ soc, hw05data)
+table(predict(mod_soc, hw05data), hw05data$approval)
+
+mod_edu <- naiveBayes(approval ~ edu, hw05data)
+table(predict(mod_edu, hw05data), hw05data$approval)
+
+mod_med <- naiveBayes(approval ~ med, hw05data)
+table(predict(mod_med, hw05data), hw05data$approval)
+
+mod_bus <- naiveBayes(approval ~ bus, hw05data)
+table(predict(mod_bus, hw05data), hw05data$approval)
+
+mod_agr <- naiveBayes(approval ~ agr, hw05data)
+table(predict(mod_agr, hw05data), hw05data$approval)
+
+mod_fin <- naiveBayes(approval ~ fin, hw05data)
+table(predict(mod_fin, hw05data), hw05data$approval)
+```
+
+
+
+
 2. Answer the following general questions  
 
 a) what kind of probability distribution does naive Bayes assume? 
+ 
+**Answer:**
+Normal/Gaussian distribution.
 
-b) would it work for other distributions (observe the ones below for examples)?
+b) would it work for other distributions (observe the ones below for examples)? 
+
+**Answer:** 
+No, it would not work for the exponential distribution in the example, because its mean and standard deviation (1/$\lambda$) cannot be used to distinguish cases of different classes.
+

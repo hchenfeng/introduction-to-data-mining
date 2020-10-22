@@ -1,0 +1,87 @@
+---
+title: "HW6"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy = T)
+
+library(e1071)
+library(tidyverse)
+library(rpart)
+library(caret)
+```
+
+```{r}
+data2 <- read.csv("hw06data2.csv")
+data2 <-
+  data2[, c(
+    "ofcage",
+    "ofcrace",
+    "ofcgender",
+    "susage",
+    "susrace",
+    "susgender",
+    "alcohol",
+    "drug",
+    "mental",
+    "susinjury"
+  )]
+new_data2 <-
+  data2 %>% filter(ofcrace %in% (1:2) &
+                     susrace %in% (1:2) & susinjury %in% (0:1))
+
+new_data2[, "susage"] <- as.integer(new_data2[, "susage"])
+new_data2[, "susinjury"] <- as.integer(new_data2[, "susinjury"])
+
+data2_factored <- new_data2
+for (i in c(2:3, 5:10)) {
+  data2_factored[, i] <- as.factor(data2_factored[, i])
+}
+
+data2_integerized <- new_data2
+data2_integerized[,"susinjury"] <- as.factor(data2_integerized[,"susinjury"]) 
+```
+
+
+Create the model for rpart and then 2 for svm, 1 that is a linear kernel and the other a polynomial.  For all three create a random partition where 2/3s of the data is for training and the other 1/3 is for testing.  After you build the models, predict the results with the test data.  Then report the accuracy for all three and answer the questions on the handin sheet. 
+
+\
+```{r}
+#set.seed(1)
+
+#hw6.sim <- function(data2_factored, training.fac.row, testing.fac.row, data2_integerized, training.int.row, testing.int.row)
+
+training.fac.row <- sample(nrow(data2_factored)) %% 3 != 0
+training.fac <- data2_factored[training.fac.row,]
+testing.fac.row <- sample(nrow(data2_factored)) %% 3 == 0
+testing.fac <- data2_factored[testing.fac.row,]
+
+training.int.row <- sample(nrow(data2_integerized)) %% 3 != 0
+training.int <- data2_integerized[training.int.row,]
+testing.int.row <- sample(nrow(data2_integerized)) %% 3 == 0
+testing.int <- data2_integerized[testing.int.row,]
+
+tree.mod <- rpart(susinjury ~ ., training.fac)
+svm.mod.linear <-
+  svm(training.int$susinjury ~ ., training.int, kernel = "linear")
+svm.mod.poly <-
+  svm(training.int$susinjury ~ ., training.int, kernel = "polynomial")
+
+pred.tree <- predict(tree.mod, testing.fac, type = "class")
+pred.svm.linear <- predict(svm.mod.linear, testing.int)
+pred.svm.poly <- predict(svm.mod.poly, testing.int)
+
+matr.rpart <- confusionMatrix(pred.tree, testing.fac$susinjury)
+matr.svm.linear <- confusionMatrix(pred.svm.linear, testing.int$susinjury)
+matr.svm.poly <- confusionMatrix(pred.svm.poly, testing.int$susinjury)
+
+# rpart
+matr.rpart$overall[1]
+# svm linear
+matr.svm.linear$overall[1]
+# svm poly
+matr.svm.poly$overall[1]
+```
