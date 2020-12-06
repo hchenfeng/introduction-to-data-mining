@@ -1,0 +1,204 @@
+---
+title: "hw8"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, echo = F, message = F, results = F)
+library(readr)
+library(dplyr)
+```
+part 1  
+
+Rescale the values in the table so that the attributes x1 and x2 are normalized using minMax normalization. If you like you can use R to calculate it. 
+
+```{r}
+part1 <- read_csv("part1.csv")
+
+min.x1 <- min(part1$x1)
+max.x1 <- max(part1$x1)
+diff.x1 <- max.x1 - min.x1
+min.x2 <- min(part1$x2)
+max.x2 <- max(part1$x2)
+diff.x2 <- max.x2 - min.x2
+
+for (n in 1:nrow(part1)) {
+  part1[n, 2] <- (part1[n, 2] - min.x1) / diff.x1
+  part1[n, 3] <- (part1[n, 3] - min.x2) / diff.x2
+}
+```
+```{r results=TRUE}
+part1
+```
+
+
+Manually calculate x1 for id=106 (give the fraction).  
+\
+**Answer: **  
+\
+$\frac{17-10}{19-10}=\frac{7}{9}$
+
+Manually calculate x2 for id=102 (give the fraction).  
+\
+**Answer: **  
+\
+$\frac{350-290}{392-290}=\frac{30}{51}$ 
+
+part 2  
+
+Go through two iterations of the kmeans algorithm.  Use the normalized data from part 1. To start, assign the instances to clusters as follows: cluster 1 = {101,102, 106}, cluster 2 = {103, 104, 105}. Complete the following two steps for both iterations:  
+
+1. Recalculate the centroids Calculate the mean for both attributes, for both centroids.  
+\
+```{r echo=TRUE}
+centroid1 <- part1 %>%
+  filter(id == c(101, 102, 106)) %>%
+  summarise(mean.x1 = mean(.$x1), mean.x2 = mean(.$x2))
+centroid1.it1 <- centroid1
+
+centroid2 <- part1 %>%
+  filter(!(id == c(101, 102, 106))) %>%
+  summarise(mean.x1 = mean(.$x1), mean.x2 = mean(.$x2))
+centroid2.it1 <- centroid2
+```
+
+2. Reassign the instances Use the Euclidean distance function to calculate the distance from each instance to each cluster.  Then reassign the instance to the closest cluster.  Calculate the SSE for the clustering.  
+\
+```{r echo=TRUE}
+clustering <- part1 %>%
+  mutate(
+    distance.to.centroid1 = sqrt((x1 - centroid1$mean.x1) ^ 2 + (x2 - centroid1$mean.x2) ^2),
+    distance.to.centroid2 = sqrt((x1 - centroid2$mean.x1) ^ 2 + (x2 - centroid2$mean.x2) ^2),
+    cluster = case_when(
+      distance.to.centroid1 > distance.to.centroid2 ~ 2,
+      distance.to.centroid1 < distance.to.centroid2 ~ 1
+    )
+  )
+clustering.it1 <- clustering
+
+cluster1 <- part1[clustering$cluster == 1,]
+cluster2 <- part1[clustering$cluster == 2,]
+
+SSE.cluster1 <- cluster1 %>%
+  mutate(SSE = (x1 - centroid1$mean.x1) ^ 2 + (x2 - centroid1$mean.x2) ^ 2)
+
+SSE.cluster1.it1 <- SSE.cluster1
+
+SSE.cluster2 <- cluster2 %>%
+  mutate(SSE = (x1 - centroid2$mean.x1) ^ 2 + (x2 - centroid2$mean.x2) ^ 2)  
+
+SSE.cluster2.it1 <- SSE.cluster2
+
+SSE.total <- sum(SSE.cluster1$SSE) + sum(SSE.cluster2$SSE)
+SSE.total.it1 <- SSE.total
+```
+```{r echo=TRUE}
+# 2nd iteration
+centroid1 <- part1 %>%
+  filter(id == c(101, 103, 106)) %>%
+  summarise(mean.x1 = mean(.$x1), mean.x2 = mean(.$x2))
+centroid1.it2 <- centroid1
+
+centroid2 <- part1 %>%
+  filter(!(id == c(101, 103, 106))) %>%
+  summarise(mean.x1 = mean(.$x1), mean.x2 = mean(.$x2))
+centroid2.it2 <- centroid2
+
+clustering <- part1 %>%
+  mutate(
+    distance.to.centroid1 = sqrt((x1 - centroid1$mean.x1) ^ 2 + (x2 - centroid1$mean.x2) ^2),
+    distance.to.centroid2 = sqrt((x1 - centroid2$mean.x1) ^ 2 + (x2 - centroid2$mean.x2) ^2),
+    cluster = case_when(
+      distance.to.centroid1 > distance.to.centroid2 ~ 2,
+      distance.to.centroid1 < distance.to.centroid2 ~ 1
+    )
+  )
+clustering.it2 <- clustering
+
+cluster1 <- part1[clustering$cluster == 1,]
+cluster2 <- part1[clustering$cluster == 2,]
+
+SSE.cluster1 <- cluster1 %>%
+  mutate(SSE = (x1 - centroid1$mean.x1) ^ 2 + (x2 - centroid1$mean.x2) ^ 2)
+SSE.cluster1.it2 <- SSE.cluster1
+
+SSE.cluster2 <- cluster2 %>%
+  mutate(SSE = (x1 - centroid2$mean.x1) ^ 2 + (x2 - centroid2$mean.x2) ^ 2)  
+SSE.cluster2.it2 <- SSE.cluster2
+
+SSE.total <- sum(SSE.cluster1$SSE) + sum(SSE.cluster2$SSE)
+SSE.total.it2 <- SSE.total
+```
+```{r results=TRUE,echo=TRUE}
+centroid1.it1
+
+centroid2.it1
+
+centroid1.it2
+
+centroid2.it2
+
+clustering.it1
+
+SSE.cluster1.it1
+
+SSE.cluster2.it1
+
+SSE.total.it1
+
+clustering.it2
+
+SSE.cluster1.it2
+
+SSE.cluster2.it2
+
+SSE.total.it1
+```
+
+
+
+part 3  
+
+Use R to cluster the instances for the data set hw08data3.txt, posted on BB.  In order to normalize the data divide columns 2, 3 and 4 by column 5 and multiply by 100,000 (so they will be number of cases per 100,000 people).  Use the kmeans clustering algorithm on columns 2-4 and choose k=4.  Remember to set.seed(1).  What was the withinss?  Describe the clusters.  State two interesting things about the results.  
+
+```{r echo=TRUE}
+hw8data <- read_table2("hw08data3.txt", col_names = TRUE)
+
+for (n in 1:nrow(hw8data)) {
+  for (m in 2:4) {
+    hw8data[n, m] <- hw8data[n, m] / hw8data[n, 5] * 100000
+  }
+}
+
+set.seed(1)
+km <- kmeans(na.omit(hw8data[, 2:4]), 4)
+```
+
+```{r results=TRUE, echo=TRUE}
+# withinss
+km$withinss
+
+# total withinss
+km$tot.withinss
+
+# size
+km$size
+
+# centers
+km$centers
+```
+
+Cluster 1 has the lowest infection rate for all three diseases.   
+Cluster 2 has a slightly higher influenza rate than cluster 1, but almost triples its rate of COVID19.  
+Cluster 3 has the highest infection rate for all three diseases, and the difference between its COVID19 rate and cluster 1 is much larger the difference between the two in terms of either pneumonia or influenza.    
+Cluster 4 has a bit over twice the rate of pneumonia than cluster 1, but almost 13 times its rate of COVID19.  
+
+1. The lowest/highest cases of all three diseases are located in the same clusters, meaning that least number of cases of COVID19 is observed where the least number of cases of both pneumonia and influenza are observed, and correspondingly, the highest number of COVID19 cases appears where the number of pneumonia and influenza cases are the highest.  
+
+
+2. Overall, the infection rate for influenza (cases per 100, 000 people) is the lowest of the three diseases.
+
+
+

@@ -1,7 +1,7 @@
 ---
 title: "hw7"
 author: "Chenfeng Hao"
-date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
+date: "`r format(Sys.time(), tz = 'EST', '%d %b %Y')`"
 output: pdf_document
 ---
 
@@ -20,9 +20,9 @@ Calculate the output for the following inputs
 
 **Answer: **  
 
-1 * (-0.7) + 1 * 0.3 + 1 * 0.5 = 0.1 > 0, so hiden.node1 = 1  
+1 * (-0.7) + 1 * 0.3 + 1 * 0.5 = 0.1 > 0, so hidden.node1 = 1  
 
-1 * (0.8) + 1 * (-0.1) + 1 * 0.3 = 1 > 0, so hiden.node2 = 1  
+1 * (0.8) + 1 * (-0.1) + 1 * 0.3 = 1 > 0, so hidden.node2 = 1  
 
 1 * 0.9 + 1 * 0.5 = 1.4
 
@@ -31,9 +31,9 @@ Calculate the output for the following inputs
 
 **Answer: **  
 
-1 * (-0.7) + 5 * 0.3 + (-3) * 0.5 = -0.7 < 0, so hiden.node1 = -1  
+1 * (-0.7) + 5 * 0.3 + (-3) * 0.5 = -0.7 < 0, so hidden.node1 = -1  
 
-1 * (0.8) + 5 * (-0.1) + (-3) * 0.3 = -0.6 < 0, so hiden.node2 = -1  
+1 * (0.8) + 5 * (-0.1) + (-3) * 0.3 = -0.6 < 0, so hidden.node2 = -1  
 
 (-1) * 0.9 + (-1) * 0.5 = -1.4
 
@@ -48,30 +48,48 @@ For this part, you are to write two functions that work together to simulate a s
 •	The second function will use a while loop to call the first function and update the weights.  The stopping condition is when the weights do not change (you can compare the sum of new vs. the old weights).  For your initial weights, use 0.1 for all weights and use 0.1 for the training rate.  The file hw07dataTiny.txt contains the training set.  You may find it useful to use the R functions sign, colSums and the matrix/vector multiplication and dot product operators.  
 
 ```{r}
+# get data from training data file
 data.training <- read.table("hw07dataTiny.txt", header = T)
-#wgts <- c(rep(0.1, 4))
-#data.training.with.bias <-
-#  as.matrix(cbind(1.0, hw07.data.tiny[, 1:3]))
-#sign(data.training.with.bias %*% wgts)
-#val <-
-#  0.1 * (data.training[, 4] - sign(data.training.with.bias %*% wgts))
-#c(val) * data.training.with.bias
-#colSums(c(val) * data.training.with.bias)
 
-get.adjustments <- function(training.data) {
-  training.data.length <- length(training.data)
-  wgts <- c(rep(0.1, training.data.length))
-  training.data.with.bias <-
-    as.matrix(cbind(1.0, training.data[, 1:(training.data.length - 1)]))
+# add additional parameter class.data in order not to recreate the same dataset every time get.adjustments() is called  
+get.adjustments <- function(training.data, weights.initial, learning.rate, class.data) {
   val <-
-    0.1 * (training.data[, 4] - sign(training.data.with.bias %*% wgts))
- colSums(c(val) * training.data.with.bias)
+    learning.rate * (class.data - sign(training.data %*% weights.initial))
+  as.vector(colSums(c(val) * training.data))
 }
 
-get.adjustments(data.training)
-#while (condition) {
+get.final.weights <- function(training.data) {
+  # get column for class
+  class.data <- training.data[, length(training.data)]
+  # add bias column and drop class column
+  training.data.with.bias <-
+    as.matrix(cbind(1.0, training.data[, 1:(length(training.data) - 1)]))
+  # create initial weights
+  wgts <- c(rep(0.1, length(training.data)))
+  # update weights
+  weights.updated <-
+    wgts + get.adjustments(training.data.with.bias, wgts, 0.1, class.data)
+  # store previous weights
+  weights.previous <- wgts
   
-#}
+  # I'm curious on why comparing sums here gives the same result as identical()
+  #
+  while (!(sum(weights.previous) == sum(weights.updated))) {  
+  # or
+  # if previous weights not the same as updated
+  #while (!(identical(weights.previous, weights.updated))) {
+    
+    # replace previous with updated
+    weights.previous <-
+      replace(weights.previous, values = weights.updated)
+    # update weights
+    weights.updated <-
+      weights.previous + get.adjustments(training.data.with.bias, weights.previous, 0.1, class.data)
+  }
+  weights.updated
+}
+
+get.final.weights(data.training)
 ```
 
 ## Part 3 – building models in R  

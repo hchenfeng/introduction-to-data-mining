@@ -1,0 +1,108 @@
+---
+title: "hw9"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dbscan)
+```
+
+part 1  
+
+1. How many clusters do you think there are?  
+
+**Answer: **  
+
+2  
+
+2. What would you consider points A and B?  
+
+**Answer: **  
+
+Outliers  
+
+3. Do you think that A and B should be in the same cluster?  Why or why not?  
+
+**Answer: **  
+
+If A and B need to be placed in a cluster, they should be in the same cluster. However, I think the overall picture of the data points suggest they are more likely outliers.
+
+part 2  
+
+Read the data into R.  Find 2 clusters using kmeans (be sure to set.seed(1) before you cluster).  After that, use hierarchical, single link to find 2 clusters and then 3 clusters.  Do the same for complete link.  Finally use DBSCAN to find clusters.  Try it using eps=.35 and minPts=4 and then eps=.40 and minPts=4.  Answer the following questions (it will be helpful to include plots of the resulting clusters):  
+
+```{r}
+hw9.data <- read.table("data(1).txt", header = T)
+
+distance <- dist(hw9.data)
+```
+(Assume A is the higher of the two data points and B the lower.)
+
+1. For kmeans, which cluster did A belong to?  B?  Explain why.  
+
+```{r}
+set.seed(1)
+km <- kmeans(hw9.data, 2)
+plot(hw9.data, col=km$cluster)
+```
+\
+As shown in the plot, A belongs to the left cluster and B the right, because, in terms of Euclidean distance (or chosen proximity measure), A is closer to the centroid of the left cluster and B that of the right.  
+
+2. For single link with 3 clusters, where did it place A and B?  Explain why.  
+
+```{r}
+sng <- hclust(distance, method = "single")
+
+sng3 <- cutree(sng, 3)
+plot(hw9.data, col=sng3)
+```
+\
+As shown in the plot, A and B are in the same cluster, separate from the other two clusters. This is because single link uses MIN as the proximity measure and points A, B are obviously further enough from the closest points of the other two clusters to be able to form their own cluster.  
+
+3. For single link with 2 clusters, where did it place A and B?  Explain why.  
+
+```{r}
+sng2 <- cutree(sng, 2)
+plot(hw9.data, col=sng2)
+```
+\
+As shown in the plot, both A and B are in the left plot, because they are closer to the closest points in the left cluster than that in the right.
+
+4. For complete link, explain how the algorithm went from 3 clusters to 2.  
+
+```{r}
+compl <- hclust(distance, method = "complete")
+
+compl2 <- cutree(compl, 2)
+compl3 <- cutree(compl, 3)
+
+par(mfrow = c(1, 2))
+plot(hw9.data, col = compl3, main = "3 clusters, complete")
+plot(hw9.data, col = compl2, main = "2 clusters, complete")
+```
+\
+Complete uses max as the proximity measure. The distance from A (and B) to the furthermost point in the left cluster is closer than that between A (and B) and the furthermost point in the left cluster, so both A and B are assigned to the left cluster.  
+
+5. For DBSCAN, how many noise points were there when eps=.35?  How many when eps=.40?  Explain the difference.  If you kept eps=.40 what could you change minPts to so that A and B were no longer noise points.  
+
+```{r}
+db1 <- dbscan(hw9.data, eps = .35, minPts = 4)
+db1
+plot(hw9.data, col=db1$cluster)
+
+
+db2 <- dbscan(hw9.data, eps = .40, minPts = 4)
+db2
+plot(hw9.data, col=db2$cluster)
+
+db3 <- dbscan(hw9.data, eps = .40, minPts = 2)
+db3
+plot(hw9.data, col=db3$cluster)
+```
+\
+eps = .35, minPts = 4, noise points = 13  
+eps = .40, minPts = 4, noise points = 2  
+eps = .40, minPts = 2, noise points = 0

@@ -1,0 +1,233 @@
+---
+title: "CIS 635 Project"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  cache.lazy = TRUE,
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  results = FALSE,
+  dpi=180,
+  fig.width = 8,
+  fig.height = 5
+)
+library(tidyverse)
+library(tidymodels)
+library(skimr)
+theme_set(theme_minimal())
+```
+In this project, we are given some demographic information and simple measurements of patients, and their test results for a certain disease. With these data, we practice some of the data mining techniques we learned through this class, including decision trees, naive Bayes, KNN, SVM, and ANN. 
+
+Here we read in the data files and covert categorical variables into factors.  
+```{r}
+personal_data <- read.table("projData1a.txt", header = T)
+personal_data[, c("ethnic", "income", "marital", "occGroup", "gender")] <-
+  personal_data[, c("ethnic", "income", "marital", "occGroup", "gender")] %>%
+  lapply(., factor)
+test_data <- read.table("projData1b.txt", header = T)
+test_data["disease"] <- test_data["disease"] %>%
+  lapply(., factor)
+```
+
+We explore whether there are outliers and what values are missing. 
+```{r results=TRUE}
+personal_data %>%
+  select(., -"id") %>%
+  skim_without_charts()
+test_data %>%
+  select(., -"id") %>%
+  skim_without_charts()
+
+sum(is.na(test_data))
+sum(is.na(personal_data))
+colnames(personal_data)[colSums(is.na(personal_data)) > 0]
+```
+We did not find any outliers, however, we find that only the dataset personal_data has missing values and all missing values are in the "heartRate" column. We could drop all records with missing values, as they account for less than 4% of the data. Depending on the nature of the data, removing them might not be desirable.  Here we choose to fill in the missing values with proper replacements. Next, we visualize the heartRate variable and its relationship with other variables in the dataset, in order to determine the proper replacements for the NAs.   
+```{r}
+# ggpairs(
+#   personal_data,
+#   columns = c(2, 8:10),
+#   upper = list(continuous = wrap("cor", size = 2)),
+#   lower = list(continuous = wrap("points", size = 0.1))
+# )
+# 
+# ggpairs(personal_data,
+#         columns = c(3:7, 10),
+#         lower = list(continuous = wrap("points", size = 0.1)))
+
+personal_data %>%
+  select(c(age, weight:heartRate)) %>%
+  pivot_longer(c(age, weight:height)) %>%
+  ggplot(aes(heartRate, value)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_wrap( ~ name, scales = "free_y")
+
+personal_data %>%
+  select(c(ethnic:gender, heartRate)) %>%
+  pivot_longer(ethnic:gender) %>%
+  ggplot(aes(heartRate, value)) +
+  geom_boxplot() +
+  facet_wrap( ~ name, scales = "free_y")
+```
+From the plots, we find the variables ethnic and gender are worth looking into, because their plots show greater variations of heartRate for different categories. We take a closer look at gender and ethnic.  
+```{r}
+ggplot(personal_data, aes(gender, heartRate)) +
+  geom_boxplot()
+
+personal_data %>%
+  group_by(gender) %>%
+  summarise(
+    mean_heartRate = mean(heartRate, na.rm = TRUE),
+    median_heartRate = median(heartRate, na.rm = TRUE)
+  )
+
+ggplot(personal_data, aes(ethnic, heartRate)) +
+  geom_boxplot()
+
+personal_data %>%
+  group_by(ethnic) %>%
+  summarise(
+    mean_heartRate = mean(heartRate, na.rm = TRUE),
+    median_heartRate = median(heartRate, na.rm = TRUE)
+  )
+
+ggplot(personal_data, aes(ethnic, heartRate, fill = gender)) +
+  geom_boxplot()
+
+personal_data %>%
+  group_by(ethnic, gender) %>%
+  summarise(
+    mean_heartRate = mean(heartRate, na.rm = TRUE),
+    median_heartRate = median(heartRate, na.rm = TRUE)
+  ) 
+```
+We find heartRate varies between the genders (assuming binary gender division) and among ethics groups, but a closer look reveals 75 might be a good heartRate candidate for both genders of ethnic group 1 and 2. For the other ethnic groups, 60 looks like a good approximation for gender 0 and 67 for gender 1. Next, we replace the miss values as stated and merge the data.
+```{r}
+personal_data_no_na <- personal_data %>%
+  na.omit()
+
+personal_data_filled_1 <- personal_data %>%
+  filter(ethnic == 1 | ethnic == 2) %>%
+  filter(is.na(heartRate)) %>%
+  mutate(heartRate = replace(heartRate, values = 75))
+
+personal_data_filled_2 <- personal_data %>%
+  filter(!(ethnic == 1 | ethnic == 2)) %>%
+  filter(is.na(heartRate)) %>%
+  filter(gender == 0) %>%
+  mutate(heartRate = replace(heartRate, values = 60))
+
+personal_data_filled_3 <- personal_data %>%
+  filter(!(ethnic == 1 | ethnic == 2)) %>%
+  filter(is.na(heartRate)) %>%
+  filter(gender == 1) %>%
+  mutate(heartRate = replace(heartRate, values = 67))
+
+personal_data <-
+  rbind(
+    personal_data_no_na,
+    personal_data_filled_1,
+    personal_data_filled_2,
+    personal_data_filled_3
+  )
+
+project_data_df <-
+  merge(personal_data, test_data, by = "id") %>%
+  select(-"id")
+```
+With data now cleaned and merged, we turn to preprocess the data.
+```{r}
+project_data_df %>%
+  select(c(age, weight:disease)) %>%
+  pivot_longer(c(age, weight:testE)) %>%
+  ggplot(aes(disease, value)) +
+  geom_boxplot() +
+  facet_wrap( ~ name, scales = "free_y")
+
+project_data_df %>%
+  select(c(ethnic:gender, disease)) %>%
+  pivot_longer(ethnic:gender) %>%
+  ggplot(aes(disease, value, col = value, fill = value)) +
+  geom_bar(stat = "identity") +
+  facet_wrap( ~ name, scales = "free_y")
+```
+
+```{r}
+set.seed(1)
+# split data into train and test sets  
+data_split <- initial_split(project_data_df)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+
+train_cv <- vfold_cv(train_data)
+
+train_rec <- recipe(disease ~ ., train_data)
+```
+
+```{r}
+# decision_tree_mod <- decision_tree() %>%
+#   set_mode("classification") %>%
+#   set_engine("rpart", times = 10)
+#   
+# wflow_decision_tree <- workflow() %>% 
+#   add_recipe(rec) %>%
+#   add_model(decision_tree_mod)
+
+# model
+tree_spec <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = tune()
+) %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+# set of parameters
+tree_grid <- 
+  grid_regular(cost_complexity(), tree_depth(), min_n(), levels = 4)
+```
+```{r}
+doParallel::registerDoParallel()
+
+set.seed(1)
+tree_rs <- tune_grid(
+  tree_spec,
+  disease ~.,
+  resamples = train_cv,
+  grid = tree_grid
+)
+
+tree_rs
+
+collect_metrics(tree_rs)
+
+autoplot(tree_rs)
+
+show_best(tree_rs)
+
+select_best(tree_rs)
+
+final_tree <- finalize_model(tree_spec, select_best(tree_rs))
+
+final_fit <- fit(final_tree, disease ~., train_data)
+```
+
+```{r}
+library(vip)
+
+final_fit %>% 
+  vip()
+```
+```{r}
+library(parttree)
+```
+
+

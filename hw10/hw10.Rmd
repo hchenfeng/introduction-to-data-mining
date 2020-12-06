@@ -1,0 +1,71 @@
+---
+title: "hw10"
+author: "Chenfeng Hao"
+date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(arules)
+library(arulesViz)
+library(readr)
+```
+
+## Part 1   
+
+Support  
+
+1. {A,B} 4/10 = 0.4  
+
+2. {B,C} 4/10 = 0.4  
+
+3. {A,B,C} 3/10 = 0.3  
+
+4. {A,B,D} 2/10 = 0.2
+
+Confidence  
+
+1. A -> B 4/7 $\approx$ 0.57   
+
+2. B -> A 4/5 = 0.8
+
+## Part 2
+
+```{r}
+docword <- read.table("docword.kos.txt", skip = 3)
+vocab <- read.table("vocab.kos.txt")
+
+docword$V2 <- vocab[docword$V2, ]
+
+l <- split(docword$V2, docword$V1)
+
+t <- as(l, "transactions")
+
+ruls <-
+  apriori(t, parameter = list(
+    support = .2,
+    confidence = .7,
+    minlen = 2
+  ))
+
+inspect(sort(ruls, by = 'confidence'))
+
+plot(ruls)
+```
+\
+[1]	{administration}	=>	{bush}    The rule with the highest confidence. "Bush Administration" was probably the most used reference to the Bush government.  
+
+[2]	{primary}	=>	{democratic}.     The rule with the second highest confidence and highest lift. There was no serious contender in the republican party against Bush, but the democratic party primaries drew much more attention. 
+
+[3]	{general,kerry}	=>	{bush}      As opposite contenders in the 2004 general election, this rule and its variations are expected.  
+
+[6]	{war}	=>	{bush}                With the invasion of Iraq in 2003 and the aftermath, war was obviously a major issue during the 2004 election against the background of 9/11.  
+
+[13]	{media}	=>	{bush}            There was understandably significant amount of media attention toward Bush during the election. 
+
+
+
+
+
