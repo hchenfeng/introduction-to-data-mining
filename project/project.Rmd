@@ -20,129 +20,123 @@ knitr::opts_chunk$set(
 library(tidyverse)
 library(tidymodels)
 library(skimr)
+library(caret)
 theme_set(theme_minimal())
 ```
 In this project, we are given some demographic information and simple measurements of patients, and their test results for a certain disease. With these data, we practice some of the data mining techniques we learned through this class, including decision trees, naive Bayes, KNN, SVM, and ANN. 
 
-Here we read in the data files and covert categorical variables into factors.  
+We first read in the data files.  
 ```{r}
 personal_data <- read.table("projData1a.txt", header = T)
-personal_data[, c("ethnic", "income", "marital", "occGroup", "gender")] <-
-  personal_data[, c("ethnic", "income", "marital", "occGroup", "gender")] %>%
-  lapply(., factor)
 test_data <- read.table("projData1b.txt", header = T)
-test_data["disease"] <- test_data["disease"] %>%
-  lapply(., factor)
 ```
 
-We explore whether there are outliers and what values are missing. 
-```{r results=TRUE}
-personal_data %>%
-  select(., -"id") %>%
-  skim_without_charts()
-test_data %>%
-  select(., -"id") %>%
-  skim_without_charts()
-
-sum(is.na(test_data))
-sum(is.na(personal_data))
-colnames(personal_data)[colSums(is.na(personal_data)) > 0]
-```
-We did not find any outliers, however, we find that only the dataset personal_data has missing values and all missing values are in the "heartRate" column. We could drop all records with missing values, as they account for less than 4% of the data. Depending on the nature of the data, removing them might not be desirable.  Here we choose to fill in the missing values with proper replacements. Next, we visualize the heartRate variable and its relationship with other variables in the dataset, in order to determine the proper replacements for the NAs.   
+Take a look at the summary.  
 ```{r}
-# ggpairs(
-#   personal_data,
-#   columns = c(2, 8:10),
-#   upper = list(continuous = wrap("cor", size = 2)),
-#   lower = list(continuous = wrap("points", size = 0.1))
-# )
-# 
-# ggpairs(personal_data,
-#         columns = c(3:7, 10),
-#         lower = list(continuous = wrap("points", size = 0.1)))
+skim(personal_data)
+skim(test_data)
+```
+We see a number of factor variables and heartRate has 738 missing values.  
 
-personal_data %>%
-  select(c(age, weight:heartRate)) %>%
-  pivot_longer(c(age, weight:height)) %>%
-  ggplot(aes(heartRate, value)) +
+Convert the factor variables to factors and merger by id.  
+```{r}
+personal_data_factored <-
+  personal_data %>%
+  mutate(across(c(ethnic:gender), as.factor))
+
+test_data_factored <- 
+  test_data %>% 
+  mutate(disease = as.factor(disease))
+
+merged_factored <-
+  merge(personal_data_factored, test_data_factored, by = "id")
+```
+738 is less than 4% of the total records. We could either ignore the records with NA values for heartRate, or we could impute values to missing fields. As an exercise, we do both.  
+
+We explore the heartRate variable and its relationship with other variables in the dataset, in order to determine the proper replacements for the NAs.  
+```{r}
+merged_factored %>%
+  select(c(ethnic:gender, heartRate, disease)) %>%
+  pivot_longer(c(ethnic:gender, disease)) %>%
+  ggplot(aes(heartRate, value, fill = value)) +
+  geom_boxplot() +
+  facet_wrap(~ name, scales = "free_y") 
+
+merged_factored %>%
+  select(c(age, weight:heartRate, testA:testE)) %>%
+  pivot_longer(c(age, weight:height, testA:testE)) %>%
+  ggplot(aes(heartRate, value, col=value)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "lm") +
-  facet_wrap( ~ name, scales = "free_y")
-
-personal_data %>%
-  select(c(ethnic:gender, heartRate)) %>%
-  pivot_longer(ethnic:gender) %>%
-  ggplot(aes(heartRate, value)) +
-  geom_boxplot() +
-  facet_wrap( ~ name, scales = "free_y")
+  facet_wrap(~ name, scales = "free_y")
 ```
-From the plots, we find the variables ethnic and gender are worth looking into, because their plots show greater variations of heartRate for different categories. We take a closer look at gender and ethnic.  
+From the plots, we find the variables "ethnic" and "gender" are worth looking into, because their plots show greater variations of heartRate for different categories. We take a closer look at "gender" and "ethnic".  
 ```{r}
-ggplot(personal_data, aes(gender, heartRate)) +
-  geom_boxplot()
+merged_factored %>%
+  select(c(ethnic, gender, heartRate)) %>%
+  pivot_longer(c(ethnic, gender)) %>%
+  ggplot(aes(heartRate, value, fill = value)) +
+  geom_boxplot() +
+  facet_wrap( ~ name, scales = "free_y") 
 
-personal_data %>%
+merged_factored %>%
   group_by(gender) %>%
   summarise(
     mean_heartRate = mean(heartRate, na.rm = TRUE),
     median_heartRate = median(heartRate, na.rm = TRUE)
   )
 
-ggplot(personal_data, aes(ethnic, heartRate)) +
-  geom_boxplot()
-
-personal_data %>%
+merged_factored %>%
   group_by(ethnic) %>%
   summarise(
     mean_heartRate = mean(heartRate, na.rm = TRUE),
     median_heartRate = median(heartRate, na.rm = TRUE)
   )
 
-ggplot(personal_data, aes(ethnic, heartRate, fill = gender)) +
+merged_factored %>%
+  ggplot(aes(ethnic, heartRate, fill = gender)) +
   geom_boxplot()
 
-personal_data %>%
+merged_factored %>%
   group_by(ethnic, gender) %>%
   summarise(
     mean_heartRate = mean(heartRate, na.rm = TRUE),
     median_heartRate = median(heartRate, na.rm = TRUE)
   ) 
 ```
-We find heartRate varies between the genders (assuming binary gender division) and among ethics groups, but a closer look reveals 75 might be a good heartRate candidate for both genders of ethnic group 1 and 2. For the other ethnic groups, 60 looks like a good approximation for gender 0 and 67 for gender 1. Next, we replace the miss values as stated and merge the data.
+We find heartRate varies between the genders and among the ethics groups, but a closer look reveals 75 might be a good heartRate candidate for both genders of ethnic group 1 and 2. For the other ethnic groups, 60 looks like a good approximation for gender 0 and 67 for gender 1. Next we impute the miss values as such.  
 ```{r}
-personal_data_no_na <- personal_data %>%
+merged_factored_no_na <- merged_factored %>%
   na.omit()
 
-personal_data_filled_1 <- personal_data %>%
+filled_1 <- merged_factored %>%
   filter(ethnic == 1 | ethnic == 2) %>%
   filter(is.na(heartRate)) %>%
   mutate(heartRate = replace(heartRate, values = 75))
 
-personal_data_filled_2 <- personal_data %>%
+filled_2 <- merged_factored %>%
   filter(!(ethnic == 1 | ethnic == 2)) %>%
   filter(is.na(heartRate)) %>%
   filter(gender == 0) %>%
   mutate(heartRate = replace(heartRate, values = 60))
 
-personal_data_filled_3 <- personal_data %>%
+filled_3 <- merged_factored %>%
   filter(!(ethnic == 1 | ethnic == 2)) %>%
   filter(is.na(heartRate)) %>%
   filter(gender == 1) %>%
   mutate(heartRate = replace(heartRate, values = 67))
 
-personal_data <-
-  rbind(
-    personal_data_no_na,
-    personal_data_filled_1,
-    personal_data_filled_2,
-    personal_data_filled_3
-  )
+merged_factored_NAfilled <-
+  rbind(merged_factored_no_na,
+        filled_1,
+        filled_2,
+        filled_3)
 
 project_data_df <-
-  merge(personal_data, test_data, by = "id") %>%
-  select(-"id")
+  merged_factored_NAfilled %>%
+  select(-id)
 ```
-With data now cleaned and merged, we turn to preprocess the data.
+With data now cleaned and merged, we take another look at our data.  
 ```{r}
 project_data_df %>%
   select(c(age, weight:disease)) %>%
@@ -157,77 +151,357 @@ project_data_df %>%
   ggplot(aes(disease, value, col = value, fill = value)) +
   geom_bar(stat = "identity") +
   facet_wrap( ~ name, scales = "free_y")
-```
 
+project_data_df %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot() +
+  geom_histogram(mapping = aes(x=value,fill=key), color="black") +
+  facet_wrap(~ key, scales = "free")
+
+project_data_df %>%
+  keep(is.numeric) %>%
+  corrr::correlate() %>%
+  corrr::rearrange() %>%
+  corrr::shave() %>%
+  corrr::rplot(shape = 15, colours = c("darkorange","white","darkcyan"))
+
+project_data_df %>%
+  keep(is.numeric) %>%
+  corrr::correlate() %>%
+  corrr::network_plot(min_cor = 0.2)
+
+project_data_factors <-
+  project_data_df %>%
+  keep(is.factor) %>%
+  colnames()
+
+chart <- c(project_data_factors,"disease")
+
+project_data_df %>%
+  select_at(vars(chart)) %>%
+  pivot_longer(-disease, names_to = "Factor", values_to = "Level") %>%
+  ggplot() +
+  geom_bar(mapping=aes(x = disease, fill = Level)) + 
+  facet_wrap(~ Factor, scales = "free")
+```
+Start by dividing the data into a train and a test set.  
 ```{r}
+
 set.seed(1)
-# split data into train and test sets  
-data_split <- initial_split(project_data_df)
+# split data into train and test sets
+data_split <- initial_split(project_data_df, strata = disease)
 train_data <- training(data_split)
 test_data  <- testing(data_split)
 
-
 train_cv <- vfold_cv(train_data)
-
-train_rec <- recipe(disease ~ ., train_data)
 ```
 
-```{r}
-# decision_tree_mod <- decision_tree() %>%
-#   set_mode("classification") %>%
-#   set_engine("rpart", times = 10)
-#   
-# wflow_decision_tree <- workflow() %>% 
-#   add_recipe(rec) %>%
-#   add_model(decision_tree_mod)
+Decision tree.  
 
-# model
+```{r}
+tree_rec <- 
+  recipe(disease ~ ., train_data)
+
 tree_spec <- decision_tree(
   cost_complexity = tune(),
   tree_depth = tune(),
   min_n = tune()
-) %>% 
-  set_engine("rpart") %>% 
+) %>%
+  set_engine("rpart") %>%
   set_mode("classification")
 
-# set of parameters
-tree_grid <- 
-  grid_regular(cost_complexity(), tree_depth(), min_n(), levels = 4)
-```
-```{r}
+tree_workflow <- workflow() %>% 
+  add_recipe(tree_rec) %>% 
+  add_model(tree_spec)
+
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          min_n(),
+                          levels = 4)
+
+save_preds <- control_grid(save_pred = TRUE)
+
 doParallel::registerDoParallel()
 
 set.seed(1)
 tree_rs <- tune_grid(
-  tree_spec,
-  disease ~.,
+  tree_workflow,
   resamples = train_cv,
-  grid = tree_grid
+  grid = tree_grid,
+  control = save_preds
 )
 
-tree_rs
+stopImplicitCluster()
+#tree_rs %>%
+#  collect_metrics
+#
+#tree_rs %>%
+#  autoplot
+#
+#tree_rs %>%
+#  show_best
 
-collect_metrics(tree_rs)
+tree_rs %>%
+  select_best("accuracy")
 
-autoplot(tree_rs)
+final_tree <- 
+  tree_workflow %>% 
+  finalize_workflow(select_best(tree_rs, "accuracy"))
 
-show_best(tree_rs)
+fit_tree <- 
+  last_fit(final_tree, data_split)
 
-select_best(tree_rs)
-
-final_tree <- finalize_model(tree_spec, select_best(tree_rs))
-
-final_fit <- fit(final_tree, disease ~., train_data)
+fit_tree %>%
+  collect_metrics()
 ```
+
+Naive Bayes
+```{r}
+nb_rec <- 
+  recipe(disease ~ ., train_data)
+
+nb_spec <- discrim::naive_Bayes(
+  smoothness = tune(),
+  Laplace = tune()
+) %>%
+  set_engine("klaR") 
+
+nb_workflow <- workflow() %>% 
+  add_recipe(nb_rec) %>% 
+  add_model(nb_spec)
+
+nb_grid <-
+  grid_regular(smoothness(),
+               Laplace(),
+               levels = 4)
+
+save_preds <- control_grid(save_pred = TRUE)
+
+doParallel::registerDoParallel()
+
+set.seed(1)
+nb_rs <- tune_grid(nb_workflow,
+                   resamples = train_cv,
+                   grid = nb_grid,
+                   control = save_preds)
+
+
+stopImplicitCluster()
+
+final_nb <- 
+  nb_workflow %>% 
+  finalize_workflow(select_best(nb_rs, "accuracy"))
+
+fit_nb <- 
+  last_fit(final_nb, data_split)
+
+fit_nb %>%
+  collect_metrics()
+```
+KNN
+```{r}
+knn_rec <-
+  recipe(disease ~ ., train_data) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_normalize(all_numeric()) %>%
+  prep()
+
+knn_spec <- nearest_neighbor(
+  neighbors = tune(),
+  weight_func = tune(),
+  dist_power = tune()
+) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+knn_workflow <- workflow() %>% 
+  add_recipe(knn_rec) %>% 
+  add_model(knn_spec)
+
+knn_grid <- grid_regular(neighbors(),
+                         weight_func(),
+                         dist_power(),
+                         levels = 2)
+
+save_preds <- control_grid(save_pred = TRUE)
+
+doParallel::registerDoParallel()
+
+set.seed(1)
+knn_rs <- tune_grid(knn_workflow,
+                   resamples = train_cv,
+                   grid = knn_grid,
+                   control = save_preds)
+
+doParallel::stopImplicitCluster()
+
+final_knn <- 
+  knn_workflow %>% 
+  finalize_workflow(select_best(knn_rs, "accuracy"))
+
+fit_knn <- 
+  last_fit(final_knn, data_split)
+
+fit_knn %>%
+  collect_metrics()
+
+train_data %>%
+  roc_curve(disease,1) %>% 
+  autoplot
+```
+SVM
+```{r}
+# library(themis)
+svm_rec <-
+  recipe(disease ~ ., train_data) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_normalize(all_numeric()) %>%
+  prep()
+  
+svm_spec <- svm_rbf(
+  cost = tune(),
+  rbf_sigma = tune()
+) %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+
+svm_workflow <- workflow() %>% 
+  add_recipe(svm_rec) %>% 
+  add_model(svm_spec)
+
+svm_grid <- grid_regular(cost(),
+                         rbf_sigma(),
+                         levels = 2)
+
+# svm_set <- parameters(svm_workflow)
+# 
+# svm_set <- 
+#   svm_set %>% 
+#   update(num_comp = num_comp(c(0L, 15L)))
+save_preds <- control_grid(save_pred = TRUE)
+
+doParallel::registerDoParallel()
+
+set.seed(1)
+# svm_rs <- tune_bayes(
+#   svm_workflow,
+#   resamples = train_cv,
+#   param_info = svm_set,
+#   initial = 5,
+#   iter = 25,
+#   metrics = metric_set(roc_auc),
+#   control = control_bayes(no_improve = 10, verbose = TRUE)
+# )
+
+svm_rs <- tune_grid(svm_workflow,
+                   resamples = train_cv,
+                   grid = svm_grid,
+                   control = save_preds)
+
+doParallel::stopImplicitCluster()
+
+final_svm <- 
+  svm_workflow %>% 
+  finalize_workflow(select_best(svm_rs, "accuracy"))
+
+fit_svm <- 
+  last_fit(final_svm, data_split)
+
+fit_svm %>%
+  collect_metrics()
+```
+
+ANN
+```{r}
+ann_rec <-
+  recipe(disease ~ ., train_data) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_normalize(all_numeric()) %>%
+  prep()
+
+ann_spec <- mlp(
+  hidden_units = tune(),
+  penalty = tune(),
+  epochs = tune()
+) %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+ann_workflow <- workflow() %>% 
+  add_recipe(ann_rec) %>% 
+  add_model(ann_spec)
+
+ann_grid <- grid_regular(hidden_units(),
+                         penalty(),
+                         epochs(),
+                         levels = 2)
+
+save_preds <- control_grid(save_pred = TRUE)
+
+doParallel::registerDoParallel()
+
+set.seed(1)
+ann_rs <- tune_grid(ann_workflow,
+                   resamples = train_cv,
+                   grid = ann_grid,
+                   control = save_preds)
+
+doParallel::stopImplicitCluster()
+
+final_ann <- 
+  ann_workflow %>% 
+  finalize_workflow(select_best(ann_rs, "accuracy"))
+
+fit_ann <- 
+  last_fit(final_ann, data_split)
+
+fit_ann %>%
+  collect_metrics()
+```
+
 
 ```{r}
-library(vip)
+collect_metrics(fit_tree) %>%
+  bind_rows(collect_metrics(fit_nb)) %>%
+  bind_rows(collect_metrics(fit_knn)) %>%
+  bind_rows(collect_metrics(fit_ann)) %>%
+  filter(.metric == "accuracy") %>%
+  mutate(model = c("decision tree", "naive Bayes", "knn", "ann")) %>%
+  knitr::kable()
 
-final_fit %>% 
-  vip()
+collect_metrics(fit_tree) %>%
+  bind_rows(collect_metrics(fit_nb)) %>%
+  bind_rows(collect_metrics(fit_knn)) %>%
+  bind_rows(collect_metrics(fit_ann)) %>%
+  filter(.metric == "roc_auc") %>%
+  mutate(model = c("decision tree", "naive Bayes", "knn", "ann")) %>%
+  knitr::kable()
 ```
 ```{r}
-library(parttree)
+tree_rs %>%
+  unnest(.predictions) %>%
+  mutate(model = "decision tree") %>%
+  bind_rows(nb_rs %>%
+              unnest(.predictions) %>%
+              mutate(model = "naive Bayes")) %>%
+  bind_rows(knn_rs %>%
+              unnest(.predictions) %>%
+              mutate(model = "knn")) %>%
+  bind_rows(ann_rs %>%
+              unnest(.predictions) %>%
+              mutate(model = "ann")) %>%
+  group_by(model) %>%
+  roc_curve(disease, .pred_0) %>%
+  ggplot(aes(x = 1 - specificity,
+             y = sensitivity,
+             color = model)) +
+  geom_line(size = 1.5) +
+  geom_abline(
+    lty = 2,
+    alpha = 0.5,
+    color = "gray50",
+    size = 1.2
+  )
 ```
-
 
