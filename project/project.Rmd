@@ -2,18 +2,29 @@
 title: "CIS 635 Project"
 author: "Chenfeng Hao"
 date: "`r format(Sys.time(), tz = 'EST', '%b %d, %Y')`"
-output: github_document
+output: 
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  github_document:
+  html_document:
+    fig_caption: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 2
+    df_print: kable
+    toc_float:
+      collapsed: no
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  cache = TRUE,
-  cache.lazy = TRUE,
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  results = FALSE,
-  dpi=180,
+  cache = TRUE,
+  cache.lazy = FALSE,
+  dpi = 180,
   fig.width = 8,
   fig.height = 5
 )
@@ -21,24 +32,35 @@ library(tidyverse)
 library(tidymodels)
 library(skimr)
 library(caret)
+library(stacks)
 theme_set(theme_minimal())
 ```
-In this project, we are given some demographic information and simple measurements of patients, and their test results for a certain disease. With these data, we practice some of the data mining techniques we learned through this class, including decision trees, naive Bayes, KNN, SVM, and ANN. 
+# Introduction  
 
-We first read in the data files.  
+In this project, we are given some demographic information and simple measurements of patients, and their test results for a certain disease. With these data, we practice some of the data mining techniques we learned through this class, including decision trees, naive Bayes, KNN, SVM, and ANN.  
+
+***
+
+# Preprocessing  
+
+We first load the data into R.  
+
 ```{r}
 personal_data <- read.table("projData1a.txt", header = T)
 test_data <- read.table("projData1b.txt", header = T)
 ```
 
-Take a look at the summary.  
-```{r}
-skim(personal_data)
-skim(test_data)
-```
-We see a number of factor variables and heartRate has 738 missing values.  
+We take a look at the summary.  
 
-Convert the factor variables to factors and merger by id.  
+```{r}
+skim_without_charts(personal_data)
+skim_without_charts(test_data)
+```
+
+We see a number of factor variables and "heartRate" has 738 missing values. For "weight", "height", and "heartRate", we do not see any extreme values. 
+
+We convert the categorical variables to factors and merge the two sets by id.  
+
 ```{r}
 personal_data_factored <-
   personal_data %>%
@@ -51,29 +73,49 @@ test_data_factored <-
 merged_factored <-
   merge(personal_data_factored, test_data_factored, by = "id")
 ```
-738 is less than 4% of the total records. We could either ignore the records with NA values for heartRate, or we could impute values to missing fields. As an exercise, we do both.  
 
-We explore the heartRate variable and its relationship with other variables in the dataset, in order to determine the proper replacements for the NAs.  
+738 is less than 4% of the total records. We could either ignore the records with NA values for "heartRate", or we could replace these missing fields with values. As an exercise, we try replacing the missing fields with some appropriate measurements.  
+
+We explore "heartRate" and its relationship with other variables in the dataset, in order to determine the proper replacements.  
+
 ```{r}
 merged_factored %>%
-  select(c(ethnic:gender, heartRate, disease)) %>%
+  dplyr::select(c(age, weight:heartRate, testA:testE)) %>%
+  pivot_longer(c(age, weight:height, testA:testE)) %>%
+  ggplot(aes(heartRate, value)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ name, scales = "free_y")
+
+merged_factored %>%
+  keep(is.numeric) %>%
+  corrr::correlate() %>%
+  corrr::rearrange() %>%
+  corrr::shave() %>%
+  corrr::rplot(shape = 15, colours = c("darkorange","white","darkcyan"))
+
+merged_factored %>%
+  keep(is.numeric) %>%
+  corrr::correlate() %>%
+  corrr::network_plot(min_cor = 0.2)
+```
+
+From the plot for numeric variables, we do not see stronger trends except for "testE" and "weight." In other words, "heartRate" is not strongly associated with most numerical variables. We take a look at the categorical variables.  
+
+```{r}
+merged_factored %>%
+  dplyr::select(c(ethnic:gender, heartRate, disease)) %>%
   pivot_longer(c(ethnic:gender, disease)) %>%
   ggplot(aes(heartRate, value, fill = value)) +
   geom_boxplot() +
   facet_wrap(~ name, scales = "free_y") 
-
-merged_factored %>%
-  select(c(age, weight:heartRate, testA:testE)) %>%
-  pivot_longer(c(age, weight:height, testA:testE)) %>%
-  ggplot(aes(heartRate, value, col=value)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = "lm") +
-  facet_wrap(~ name, scales = "free_y")
 ```
-From the plots, we find the variables "ethnic" and "gender" are worth looking into, because their plots show greater variations of heartRate for different categories. We take a closer look at "gender" and "ethnic".  
+
+In the plots for categorical variables and , we find the variables "ethnic" and "gender" are worth looking into, because their plots show greater variations of heartRate for different categories. We take a closer look at "gender" and "ethnic".  
+
 ```{r}
 merged_factored %>%
-  select(c(ethnic, gender, heartRate)) %>%
+  dplyr::select(c(ethnic, gender, heartRate)) %>%
   pivot_longer(c(ethnic, gender)) %>%
   ggplot(aes(heartRate, value, fill = value)) +
   geom_boxplot() +
@@ -92,7 +134,11 @@ merged_factored %>%
     mean_heartRate = mean(heartRate, na.rm = TRUE),
     median_heartRate = median(heartRate, na.rm = TRUE)
   )
+```
 
+The mean "heartRate" values clearly differ between the genders, and between two ethnic groups and the other four.  
+
+```{r}
 merged_factored %>%
   ggplot(aes(ethnic, heartRate, fill = gender)) +
   geom_boxplot()
@@ -104,7 +150,9 @@ merged_factored %>%
     median_heartRate = median(heartRate, na.rm = TRUE)
   ) 
 ```
-We find heartRate varies between the genders and among the ethics groups, but a closer look reveals 75 might be a good heartRate candidate for both genders of ethnic group 1 and 2. For the other ethnic groups, 60 looks like a good approximation for gender 0 and 67 for gender 1. Next we impute the miss values as such.  
+
+We take a closer look and find 75 might be a good "heartRate" candidate for both genders of ethnic group 1 and 2. For the other ethnic groups, 60 looks like a good approximation for gender 0 and 67 for gender 1. Next we assign the miss values as such.  
+
 ```{r}
 merged_factored_no_na <- merged_factored %>%
   na.omit()
@@ -134,19 +182,51 @@ merged_factored_NAfilled <-
 
 project_data_df <-
   merged_factored_NAfilled %>%
-  select(-id)
+  dplyr::select(-id)
 ```
+
+The "recipe" package of "tidymodels" provides a number of methods for filling in missing values. We compare the results from our above operations with step_knnimpute, which replaces missing values using a k-nearest neighbor approach.  
+
+```{r}
+knn_impute <- recipe(disease ~ ., merged_factored) %>% 
+  step_knnimpute(heartRate, neighbors = 3) %>% 
+  prep %>% 
+  juice
+
+original_sum <- summary(merged_factored$heartRate)
+
+transformed_sum <- summary(project_data_df$heartRate)
+
+knn_impute_sum <- summary(knn_impute$heartRate)
+
+sum_table <- bind_rows(original_sum,
+                       transformed_sum,
+                       knn_impute_sum)
+
+bind_cols(sum_table, "source" = c("original",
+                                  "transformed",
+                                  "knn_impute"))
+
+```
+
+We see the difference between our replacement values for "heartRate" and that from "step_impute" is minimal for this dataset. 
+
+***  
+
+# Overview  
+
 With data now cleaned and merged, we take another look at our data.  
+
 ```{r}
 project_data_df %>%
-  select(c(age, weight:disease)) %>%
+  dplyr::select(c(age, weight:disease)) %>%
   pivot_longer(c(age, weight:testE)) %>%
   ggplot(aes(disease, value)) +
   geom_boxplot() +
   facet_wrap( ~ name, scales = "free_y")
 
 project_data_df %>%
-  select(c(ethnic:gender, disease)) %>%
+  dplyr::select(c(ethnic:gender, disease)) %>%
   pivot_longer(ethnic:gender) %>%
   ggplot(aes(disease, value, col = value, fill = value)) +
   geom_bar(stat = "identity") +
@@ -158,50 +238,40 @@ project_data_df %>%
   ggplot() +
   geom_histogram(mapping = aes(x=value,fill=key), color="black") +
   facet_wrap(~ key, scales = "free")
-
-project_data_df %>%
-  keep(is.numeric) %>%
-  corrr::correlate() %>%
-  corrr::rearrange() %>%
-  corrr::shave() %>%
-  corrr::rplot(shape = 15, colours = c("darkorange","white","darkcyan"))
-
-project_data_df %>%
-  keep(is.numeric) %>%
-  corrr::correlate() %>%
-  corrr::network_plot(min_cor = 0.2)
-
-project_data_factors <-
-  project_data_df %>%
-  keep(is.factor) %>%
-  colnames()
-
-chart <- c(project_data_factors,"disease")
-
-project_data_df %>%
-  select_at(vars(chart)) %>%
-  pivot_longer(-disease, names_to = "Factor", values_to = "Level") %>%
-  ggplot() +
-  geom_bar(mapping=aes(x = disease, fill = Level)) + 
-  facet_wrap(~ Factor, scales = "free")
 ```
-Start by dividing the data into a train and a test set.  
+
+The mean difference for "heartRate" seem to vary at a greater extent for disease. The numerical variables are mostly normal, except maybe "weight".  
+
+***  
+
+# Model Training
+
+We start by dividing the data into a train and a test set. By default, this creates a 3 to 1 split between a training set and a testing set.  The "strata" parameter keeps the proportion of "disease" as in the whole set. The "vfold_cv" method creates 10 folds for resampling.  
+
 ```{r}
 
 set.seed(1)
 # split data into train and test sets
 data_split <- initial_split(project_data_df, strata = disease)
-train_data <- training(data_split)
-test_data  <- testing(data_split)
+train_split <- training(data_split)
+test_split <- testing(data_split)
 
-train_cv <- vfold_cv(train_data)
+set.seed(1)
+train_cv <- vfold_cv(train_split)
+model_control <- control_grid(save_pred = TRUE)
 ```
 
-Decision tree.  
+## Decision tree    
+
+We set up the pipeline for training the decision tree model. Parameters "cost_complexity", "tree_depth", and "min_n" are tuned on a simple grid of values. The final model parameters are selected based on "accuracy".  
+
+The training procedure for other models follows a similar process, adjusting for relevant parameters.    
+
+### Training  
 
 ```{r}
 tree_rec <- 
-  recipe(disease ~ ., train_data)
+  recipe(disease ~ ., train_split)
 
 tree_spec <- decision_tree(
   cost_complexity = tune(),
@@ -215,12 +285,9 @@ tree_workflow <- workflow() %>%
   add_recipe(tree_rec) %>% 
   add_model(tree_spec)
 
-tree_grid <- grid_regular(cost_complexity(),
-                          tree_depth(),
-                          min_n(),
-                          levels = 4)
-
-save_preds <- control_grid(save_pred = TRUE)
+tree_grid <- tree_spec %>% 
+  parameters() %>% 
+  grid_regular(levels = 4)
 
 doParallel::registerDoParallel()
 
@@ -229,21 +296,8 @@ tree_rs <- tune_grid(
   tree_workflow,
   resamples = train_cv,
   grid = tree_grid,
-  control = save_preds
+  control = model_control
 )
-
-stopImplicitCluster()
-#tree_rs %>%
-#  collect_metrics
-#
-#tree_rs %>%
-#  autoplot
-#
-#tree_rs %>%
-#  show_best
-
-tree_rs %>%
-  select_best("accuracy")
 
 final_tree <- 
   tree_workflow %>% 
@@ -252,14 +306,30 @@ final_tree <-
 fit_tree <- 
   last_fit(final_tree, data_split)
 
+doParallel::stopImplicitCluster()
+
 fit_tree %>%
   collect_metrics()
+
+fit_tree %>%
+  collect_predictions() %>%
+  conf_mat(truth = disease, .pred_class)
+
+final_tree %>%
+  fit(data = train_split) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "point")
 ```
 
-Naive Bayes
+### Result  
+
+
+
+## Naive Bayes  
+
 ```{r}
 nb_rec <- 
-  recipe(disease ~ ., train_data)
+  recipe(disease ~ ., train_split)
 
 nb_spec <- discrim::naive_Bayes(
   smoothness = tune(),
@@ -271,12 +341,9 @@ nb_workflow <- workflow() %>%
   add_recipe(nb_rec) %>% 
   add_model(nb_spec)
 
-nb_grid <-
-  grid_regular(smoothness(),
-               Laplace(),
-               levels = 4)
-
-save_preds <- control_grid(save_pred = TRUE)
+nb_grid <- nb_spec %>%
+  parameters() %>%
+  grid_regular(levels = 4)
 
 doParallel::registerDoParallel()
 
@@ -284,10 +351,7 @@ set.seed(1)
 nb_rs <- tune_grid(nb_workflow,
                    resamples = train_cv,
                    grid = nb_grid,
-                   control = save_preds)
-
-
-stopImplicitCluster()
+                   control = model_control)
 
 final_nb <- 
   nb_workflow %>% 
@@ -296,16 +360,28 @@ final_nb <-
 fit_nb <- 
   last_fit(final_nb, data_split)
 
+doParallel::stopImplicitCluster()
+
+
 fit_nb %>%
   collect_metrics()
+
+fit_nb %>%
+  collect_predictions() %>%
+  conf_mat(truth = disease, .pred_class)
 ```
-KNN
+
+## KNN  
+
+For knn, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
+
 ```{r}
 knn_rec <-
-  recipe(disease ~ ., train_data) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_normalize(all_numeric()) %>%
+  recipe(formula = disease ~ ., data = train_split) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_normalize(all_predictors(), -all_nominal()) %>% 
   prep()
+
 
 knn_spec <- nearest_neighbor(
   neighbors = tune(),
@@ -324,15 +400,13 @@ knn_grid <- grid_regular(neighbors(),
                          dist_power(),
                          levels = 2)
 
-save_preds <- control_grid(save_pred = TRUE)
-
 doParallel::registerDoParallel()
 
 set.seed(1)
 knn_rs <- tune_grid(knn_workflow,
                    resamples = train_cv,
                    grid = knn_grid,
-                   control = save_preds)
+                   control = model_control)
 
 doParallel::stopImplicitCluster()
 
@@ -340,28 +414,34 @@ final_knn <-
   knn_workflow %>% 
   finalize_workflow(select_best(knn_rs, "accuracy"))
 
+set.seed(1)
 fit_knn <- 
   last_fit(final_knn, data_split)
 
 fit_knn %>%
   collect_metrics()
 
-train_data %>%
-  roc_curve(disease,1) %>% 
-  autoplot
+fit_knn %>% 
+  collect_predictions() %>% 
+  conf_mat(truth = disease, .pred_class)
 ```
-SVM
+
+## SVM  
+
+For svm, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
+
+Parsnip now only supports poly and radial kernels. We choose poly to practice with.  
+
 ```{r}
-# library(themis)
 svm_rec <-
-  recipe(disease ~ ., train_data) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_normalize(all_numeric()) %>%
+  recipe(disease ~ ., train_split) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_normalize(all_predictors(), -all_nominal()) %>% 
   prep()
   
-svm_spec <- svm_rbf(
-  cost = tune(),
-  rbf_sigma = tune()
+svm_spec <- svm_poly(
+  cost = 0.001,
+  degree = 3
 ) %>%
   set_engine("kernlab") %>%
   set_mode("classification")
@@ -370,54 +450,53 @@ svm_workflow <- workflow() %>%
   add_recipe(svm_rec) %>% 
   add_model(svm_spec)
 
-svm_grid <- grid_regular(cost(),
-                         rbf_sigma(),
-                         levels = 2)
-
-# svm_set <- parameters(svm_workflow)
-# 
-# svm_set <- 
-#   svm_set %>% 
-#   update(num_comp = num_comp(c(0L, 15L)))
-save_preds <- control_grid(save_pred = TRUE)
-
 doParallel::registerDoParallel()
 
 set.seed(1)
-# svm_rs <- tune_bayes(
-#   svm_workflow,
-#   resamples = train_cv,
-#   param_info = svm_set,
-#   initial = 5,
-#   iter = 25,
-#   metrics = metric_set(roc_auc),
-#   control = control_bayes(no_improve = 10, verbose = TRUE)
-# )
 
-svm_rs <- tune_grid(svm_workflow,
-                   resamples = train_cv,
-                   grid = svm_grid,
-                   control = save_preds)
+svm_fit <- 
+  svm_spec %>% 
+  fit(disease ~., data = train_split)
+
+svm_fit_rs <- svm_workflow %>% 
+  fit_resamples(train_cv)
+
+fit_svm <- svm_workflow %>%
+  finalize_workflow(svm_fit_rs$.metrics) %>%
+  last_fit(data_split)
+
+#svm_test_pred <-
+#  predict(svm_fit, test_split) %>%
+#  bind_cols(predict(svm_fit, test_split, type = "prob")) %>%
+#  bind_cols(test_split %>% select(disease))
 
 doParallel::stopImplicitCluster()
 
-final_svm <- 
-  svm_workflow %>% 
-  finalize_workflow(select_best(svm_rs, "accuracy"))
 
-fit_svm <- 
-  last_fit(final_svm, data_split)
 
-fit_svm %>%
+#svm_test_pred %>%
+#  accuracy(truth = disease, .pred_class)
+#
+#svm_test_pred %>%
+#  roc_auc(truth = disease, .pred_class)
+
+fit_svm %>% 
   collect_metrics()
+
+fit_svm %>% 
+  collect_predictions() %>% 
+  conf_mat(truth = disease, .pred_class)
 ```
 
-ANN
+## ANN  
+
+For ann, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
+
 ```{r}
 ann_rec <-
-  recipe(disease ~ ., train_data) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_normalize(all_numeric()) %>%
+  recipe(disease ~ ., train_split) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_normalize(all_predictors(), -all_nominal()) %>% 
   prep()
 
 ann_spec <- mlp(
@@ -432,12 +511,9 @@ ann_workflow <- workflow() %>%
   add_recipe(ann_rec) %>% 
   add_model(ann_spec)
 
-ann_grid <- grid_regular(hidden_units(),
-                         penalty(),
-                         epochs(),
-                         levels = 2)
-
-save_preds <- control_grid(save_pred = TRUE)
+ann_grid <- ann_spec %>% 
+  parameters() %>% 
+  grid_regular(levels = 2)
 
 doParallel::registerDoParallel()
 
@@ -445,63 +521,90 @@ set.seed(1)
 ann_rs <- tune_grid(ann_workflow,
                    resamples = train_cv,
                    grid = ann_grid,
-                   control = save_preds)
-
-doParallel::stopImplicitCluster()
+                   control = model_control)
 
 final_ann <- 
   ann_workflow %>% 
   finalize_workflow(select_best(ann_rs, "accuracy"))
 
+set.seed(1)
 fit_ann <- 
   last_fit(final_ann, data_split)
 
+doParallel::stopImplicitCluster()
+
 fit_ann %>%
   collect_metrics()
+
+fit_ann %>% 
+  collect_predictions() %>% 
+  conf_mat(truth = disease, .pred_class)
+
+final_ann %>%
+  fit(data = train_split) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "point")
 ```
 
+## Results  
+
+We compare accuracy and roc_auc of the models on the training data.  
 
 ```{r}
 collect_metrics(fit_tree) %>%
   bind_rows(collect_metrics(fit_nb)) %>%
   bind_rows(collect_metrics(fit_knn)) %>%
+  bind_rows(collect_metrics(fit_svm)) %>%
   bind_rows(collect_metrics(fit_ann)) %>%
   filter(.metric == "accuracy") %>%
-  mutate(model = c("decision tree", "naive Bayes", "knn", "ann")) %>%
-  knitr::kable()
-
-collect_metrics(fit_tree) %>%
-  bind_rows(collect_metrics(fit_nb)) %>%
-  bind_rows(collect_metrics(fit_knn)) %>%
-  bind_rows(collect_metrics(fit_ann)) %>%
-  filter(.metric == "roc_auc") %>%
-  mutate(model = c("decision tree", "naive Bayes", "knn", "ann")) %>%
+  mutate(model = c("decision tree", "naive Bayes", "knn", "svm", "ann")) %>%
+  arrange(-.estimate) %>% 
   knitr::kable()
 ```
+
+We look at the roc_auc curve.  
+
 ```{r}
-tree_rs %>%
-  unnest(.predictions) %>%
-  mutate(model = "decision tree") %>%
-  bind_rows(nb_rs %>%
-              unnest(.predictions) %>%
-              mutate(model = "naive Bayes")) %>%
-  bind_rows(knn_rs %>%
-              unnest(.predictions) %>%
-              mutate(model = "knn")) %>%
-  bind_rows(ann_rs %>%
-              unnest(.predictions) %>%
-              mutate(model = "ann")) %>%
-  group_by(model) %>%
-  roc_curve(disease, .pred_0) %>%
-  ggplot(aes(x = 1 - specificity,
-             y = sensitivity,
-             color = model)) +
-  geom_line(size = 1.5) +
-  geom_abline(
-    lty = 2,
-    alpha = 0.5,
-    color = "gray50",
-    size = 1.2
-  )
+#tree_rs %>%
+#  unnest(.predictions) %>%
+#  mutate(model = "decision tree") %>%
+#  bind_rows(nb_rs %>%
+#              unnest(.predictions) %>%
+#              mutate(model = "naive Bayes")) %>%
+#  bind_rows(knn_rs %>%
+#              unnest(.predictions) %>%
+#              mutate(model = "knn")) %>%
+#  bind_rows(svm_rs %>%
+#              unnest(.predictions) %>%
+#              mutate(model = "svm")) %>%
+#  bind_rows(ann_rs %>%
+#              unnest(.predictions) %>%
+#              mutate(model = "ann")) %>%
+#  group_by(model) %>%
+#  roc_curve(disease, .pred_0) %>%
+#  ggplot(aes(
+#    x = 1 - specificity,
+#    y = sensitivity,
+#    color = model
+#  )) +
+#  geom_line(size = 1.5) +
+#  geom_abline(
+#    lty = 2,
+#    alpha = 0.5,
+#    color = "gray50",
+#    size = 1.2
+#  )
 ```
 
+
+***  
+
+# Results  
+
+***  
+
+# Conclusion  
+
+***  
+
+# 
