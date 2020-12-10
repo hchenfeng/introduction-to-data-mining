@@ -6,6 +6,7 @@ output:
   pdf_document:
     toc: yes
     toc_depth: '2'
+    dev: jpeg
   github_document:
   html_document:
     fig_caption: yes
@@ -32,7 +33,6 @@ library(tidyverse)
 library(tidymodels)
 library(skimr)
 library(caret)
-library(stacks)
 theme_set(theme_minimal())
 ```
 # Introduction  
@@ -185,7 +185,7 @@ project_data_df <-
   dplyr::select(-id)
 ```
 
-The "recipe" package of "tidymodels" provides a number of methods for filling in missing values. We compare the results from our above operations with step_knnimpute, which replaces missing values using a k-nearest neighbor approach.  
+The "recipe" package provides a number of methods for filling in missing values. We compare the results from our above operations with step_knnimpute, which replaces missing values using a k-nearest neighbor approach.  
 
 ```{r}
 knn_impute <- recipe(disease ~ ., merged_factored) %>% 
@@ -206,7 +206,6 @@ sum_table <- bind_rows(original_sum,
 bind_cols(sum_table, "source" = c("original",
                                   "transformed",
                                   "knn_impute"))
-
 ```
 
 We see the difference between our replacement values for "heartRate" and that from "step_impute" is minimal for this dataset. 
@@ -221,7 +220,7 @@ With data now cleaned and merged, we take another look at our data.
 project_data_df %>%
   dplyr::select(c(age, weight:disease)) %>%
   pivot_longer(c(age, weight:testE)) %>%
-  ggplot(aes(disease, value)) +
+  ggplot(aes(disease, value, col = disease)) +
   geom_boxplot() +
   facet_wrap( ~ name, scales = "free_y")
 
@@ -230,7 +229,7 @@ project_data_df %>%
   pivot_longer(ethnic:gender) %>%
   ggplot(aes(disease, value, col = value, fill = value)) +
   geom_bar(stat = "identity") +
-  facet_wrap( ~ name, scales = "free_y")
+  facet_wrap(~ name, scales = "free_y")
 
 project_data_df %>%
   keep(is.numeric) %>%
@@ -240,19 +239,18 @@ project_data_df %>%
   facet_wrap(~ key, scales = "free")
 ```
 
-The mean difference for "heartRate" seem to vary at a greater extent for disease. The numerical variables are mostly normal, except maybe "weight".  
+The mean difference for "heartRate" seem to vary at a greater extent for disease. The numerical variables are mostly normal, except maybe "weight", which we would normalize for KNN, SVM, and ANN.    
 
 ***  
 
 # Model Training
 
-We start by dividing the data into a train and a test set. By default, this creates a 3 to 1 split between a training set and a testing set.  The "strata" parameter keeps the proportion of "disease" as in the whole set. The "vfold_cv" method creates 10 folds for resampling.  
+We start by dividing the data into a train and a test set. By default, this creates a 3 to 1 split between a training set and a testing set.  The "strata" parameter keeps the proportion of "disease" as in the whole set. The "vfold_cv" method creates 10 folds for resampling. We set "save_pred" to "TRUE" in order to retrieve metrics and predictions from the model.  
 
 ```{r}
 
 set.seed(1)
-# split data into train and test sets
-data_split <- initial_split(project_data_df, strata = disease)
+data_split <- initial_split(project_data_df)
 train_split <- training(data_split)
 test_split <- testing(data_split)
 
@@ -323,9 +321,11 @@ final_tree %>%
 
 ### Result  
 
-
+We get very good "accuracy" from the decision tree model: 0.896. The importance plot shows "weight" has the biggest impact on prediction in this model, followed by "age", "heartRate", and "testE".
 
 ## Naive Bayes  
+
+### Training
 
 ```{r}
 nb_rec <- 
@@ -362,7 +362,6 @@ fit_nb <-
 
 doParallel::stopImplicitCluster()
 
-
 fit_nb %>%
   collect_metrics()
 
@@ -371,7 +370,13 @@ fit_nb %>%
   conf_mat(truth = disease, .pred_class)
 ```
 
+### Result  
+
+The "accuracy" we get from the naive Bayes model is relatively low. Compared with the decision tree model, we get both more false positives and false negatives, as indicated in the confusion matrix. Unfortunately, we do not have an importance ranking for the model from the package we are using, same for KNN and SVM.    
+
 ## KNN  
+
+### Training  
 
 For knn, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
 
@@ -381,7 +386,6 @@ knn_rec <-
   step_dummy(all_nominal(), -all_outcomes()) %>% 
   step_normalize(all_predictors(), -all_nominal()) %>% 
   prep()
-
 
 knn_spec <- nearest_neighbor(
   neighbors = tune(),
@@ -426,11 +430,17 @@ fit_knn %>%
   conf_mat(truth = disease, .pred_class)
 ```
 
+### Result  
+
+The "accuracy" we get from the KNN model is very close to that we get from the decision tree model, although still a bit lower.  
+
 ## SVM  
+
+### Training  
 
 For svm, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
 
-Parsnip now only supports poly and radial kernels. We choose poly to practice with.  
+Parsnip now only supports "poly" and "radial" kernels. We choose "poly" to practice with. The "cost" and "degree" values are obtained through previous tuning. Since it takes a long time to tune SVM models, instead of tuning hyperparameters as in other model training sessions, we use the parameter values directly.  
 
 ```{r}
 svm_rec <-
@@ -461,24 +471,21 @@ svm_fit <-
 svm_fit_rs <- svm_workflow %>% 
   fit_resamples(train_cv)
 
+# refit is done for accuracy retrieval consistent with other model training sessions
 fit_svm <- svm_workflow %>%
   finalize_workflow(svm_fit_rs$.metrics) %>%
   last_fit(data_split)
 
-#svm_test_pred <-
-#  predict(svm_fit, test_split) %>%
-#  bind_cols(predict(svm_fit, test_split, type = "prob")) %>%
-#  bind_cols(test_split %>% select(disease))
+svm_test_pred <-
+  predict(svm_fit, test_split) %>%
+  bind_cols(predict(svm_fit, test_split, type = "prob")) %>%
+  bind_cols(test_split %>%
+              dplyr::select(disease))
 
 doParallel::stopImplicitCluster()
 
-
-
-#svm_test_pred %>%
-#  accuracy(truth = disease, .pred_class)
-#
-#svm_test_pred %>%
-#  roc_auc(truth = disease, .pred_class)
+svm_test_pred %>%
+ accuracy(truth = disease, .pred_class)
 
 fit_svm %>% 
   collect_metrics()
@@ -488,7 +495,13 @@ fit_svm %>%
   conf_mat(truth = disease, .pred_class)
 ```
 
+### Result 
+
+We get relatively higher "accuracy" for SVM as well, partly because we are using a poly kernel.  
+
 ## ANN  
+
+### Training
 
 For ann, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
 
@@ -546,10 +559,15 @@ final_ann %>%
   vip(geom = "point")
 ```
 
-## Results  
+### Result  
 
-We compare accuracy and roc_auc of the models on the training data.  
+We get the highest "accuracy" from the ANN model. It is harder to interpret the importance plot here, but "heartRate" is undoubtedly an important predictor variable for the disease.  
 
+***  
+
+# Results  
+
+We compare the "accuracy" scores we get from all five models.   
 ```{r}
 collect_metrics(fit_tree) %>%
   bind_rows(collect_metrics(fit_nb)) %>%
@@ -562,49 +580,68 @@ collect_metrics(fit_tree) %>%
   knitr::kable()
 ```
 
-We look at the roc_auc curve.  
+In terms of "accuracy" in predicting the testing set ("test_split"), ANN performs the best, followed by decision tree, SVM, and KNN, with naive Bayes being the worst. However, of the top four, the differences between adjacent pairs are all close to 1%, suggesting they have very close prediction power for the current dataset. The naive Bayes model returns a much lower "accuracy". We take another look at the data and see why this may be the case.  
 
 ```{r}
-#tree_rs %>%
-#  unnest(.predictions) %>%
-#  mutate(model = "decision tree") %>%
-#  bind_rows(nb_rs %>%
-#              unnest(.predictions) %>%
-#              mutate(model = "naive Bayes")) %>%
-#  bind_rows(knn_rs %>%
-#              unnest(.predictions) %>%
-#              mutate(model = "knn")) %>%
-#  bind_rows(svm_rs %>%
-#              unnest(.predictions) %>%
-#              mutate(model = "svm")) %>%
-#  bind_rows(ann_rs %>%
-#              unnest(.predictions) %>%
-#              mutate(model = "ann")) %>%
-#  group_by(model) %>%
-#  roc_curve(disease, .pred_0) %>%
-#  ggplot(aes(
-#    x = 1 - specificity,
-#    y = sensitivity,
-#    color = model
-#  )) +
-#  geom_line(size = 1.5) +
-#  geom_abline(
-#    lty = 2,
-#    alpha = 0.5,
-#    color = "gray50",
-#    size = 1.2
-#  )
+project_data_df %>%
+  dplyr::select(c(age, weight:heartRate, testA:disease)) %>%
+  pivot_longer(c(age, weight:height, testA:testE)) %>%
+  ggplot(aes(heartRate, value, col = disease)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(~ name, scales = "free_y")
 ```
 
+In the plots of "heartRate" against all other numerical variables, it is not hard to find some approximate boundaries between the two classes of "disease". It may sometimes not be easy to get rectangular boundaries, but we see a relatively small number of clumps in most plots. We see a similar situation in the more complicated paired numerical variable plots.   
 
-***  
+```{r}
+library(GGally)
 
-# Results  
+project_data_df %>%
+  dplyr::select(c(age, weight:heartRate, testA:disease)) %>%
+  ggpairs(
+    mapping = ggplot2::aes(color = disease),
+    lower = list(
+      continuous = wrap("smooth", alpha = 0.3, size = 0.1),
+      discrete = "blank",
+      combo = "blank"
+    ),
+    upper = list(
+      combo = wrap("box_no_facet", alpha = 0.5),
+      continuous = wrap("cor", size = 4, alignPercent = 0.8)
+    ) +
+      theme(theme_minimal())
+  )
+```
+
+Again, we see clumps and sometimes rectangular boundaries, but rarely a plot where the classes are centered apart and not overlapping. This suggests ANN would work best for this dataset. Decision tree may also have good performance here, probably not as good as ANN. And naive Bayes may not be a good classifier for this dataset. A linear kernel SVM may not perform as well, since all "age" plots does not seem to have a clear linear boundary. However, because we use a poly kernel here, we get an "accuracy" close to the top performers. KNN should have relatively worse performance, but we have tuned the hyperparameters and the number of variables may not be high enough to cause a steep performance drop.
 
 ***  
 
 # Conclusion  
 
+If we need to get prediction for this dataset, then ANN or decision tree may be the better choice. SVM with non-linear kernels or KNN could be a close second. If, however, we also want to interpret the model, then decision tree is clearly the best choice. 
+
+Recall this plot.  
+
+```{r}
+final_tree %>%
+  fit(data = train_split) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "point")
+```
+
+It shows "weight", "age", "testE", and "heartRate" have the most impact in predicting "disease" in the model. This suggests one should be looking at these aspects when diagnosing a patient for this disease. Also important are "ethnic" and "gender". The result from "testE" is the most important for predicting the disease among all tests. The result from "testD" should not be relied on, at least not solely, for diagnosing the disease. 
+
+In all, this has been a fruitful learning experience. I tried many things in "tidymodels" and learned about some of its advantages and limitations. And I very much enjoyed the struggle I had along the way.  
+
 ***  
 
-# 
+# Appendix
+
+## Reference  
+
+https://www.tidymodels.org/  
+
+https://juliasilge.com/  
+
+https://github.com/andrew-couch/Tidy-Tuesday
