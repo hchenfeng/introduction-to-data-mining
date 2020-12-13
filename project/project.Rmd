@@ -378,7 +378,7 @@ The "accuracy" we get from the naive Bayes model is relatively low. Compared wit
 
 ### Training  
 
-For knn, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
+For KNN, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
 
 ```{r}
 knn_rec <-
@@ -503,7 +503,7 @@ We get relatively higher "accuracy" for SVM as well, partly because we are using
 
 ### Training
 
-For ann, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
+For ANN, we convert factors to dummy variables using "step_dummy", and center and scale numeric values using "step_normalize".  
 
 ```{r}
 ann_rec <-
